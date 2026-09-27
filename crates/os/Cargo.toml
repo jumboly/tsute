@@ -1,0 +1,24 @@
+[package]
+name = "tsute-os"
+description = "OS 統合（Clipboard / 通知 / ログイン項目）。macOS 実装、Windows は Phase 2"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3"
+objc2-uniform-type-identifiers = "0.3"
+objc2-user-notifications = "0.3"
+objc2-service-management = "0.3"
+objc2-av-foundation = { version = "0.3", features = ["objc2-core-media", "objc2-core-foundation"] }
+objc2-core-media = "0.3"
+objc2-core-foundation = "0.3"
+block2 = "0.6"
+
+[dev-dependencies]
+tempfile = "3"
