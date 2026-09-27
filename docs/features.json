@@ -265,8 +265,8 @@
       "area": "auth",
       "title": "Web Endpoint Enrollment（Web Crypto Ed25519 非抽出鍵 + IndexedDB）",
       "phase": "W",
-      "status": "in_progress",
-      "notes": "Chromium/WebKit の E2E で確認済み。2026-09-27 ユーザーが iPhone 実機（ホーム画面の PWA）で確認済み: Safari と PWA でそれぞれ登録（iOS は保存領域が別のため PWA で再登録が必要）。再起動後の同一 Endpoint は未確認"
+      "status": "done",
+      "notes": "Chromium/WebKit の E2E で確認済み。2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA）で確認済み: 登録、PWA の再起動・iPhone 再起動後も再登録なしで同じ Endpoint（iOS は Safari と PWA で保存領域が別のため PWA で登録し直す）"
     },
     {
       "id": "web-auth",
@@ -305,32 +305,32 @@
       "area": "ui",
       "title": "Clipboard から読み込み（Async Clipboard API, 対応時のみ）と Paste 経路",
       "phase": "W",
-      "status": "in_progress",
-      "notes": "Async Clipboard（ボタン操作内のみ）と Paste 経路。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。Safari / Firefox の Paste 確認 UI は実機確認待ち"
+      "status": "done",
+      "notes": "Async Clipboard（ボタン操作内のみ）と Paste 経路。E2E で確認済み。2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA）で確認済み: 写真アプリでコピーした画像を貼り付けて送信。Firefox は端末が無く未確認"
     },
     {
       "id": "web-clip-image",
       "area": "transfer",
       "title": "Image Clipboard 送受信（PNG 正規化、Preview/形式/解像度/サイズ、presigned S3 + CORS）",
       "phase": "W",
-      "status": "in_progress",
-      "notes": "PNG 正規化（他形式は canvas 変換）、presigned S3 + CORS（App オリジンのみ）。Web↔Web・Web↔Native とも Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。実機確認待ち"
+      "status": "done",
+      "notes": "PNG 正規化、presigned S3 + CORS（App オリジンのみ）。E2E で確認済み。2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA）で確認済み: iPhone → Mac、Mac → iPhone（共有…から写真に保存）"
     },
     {
       "id": "web-receive",
       "area": "ui",
       "title": "Text/Image 受信表示・明示的 Copy / 保存 / Dismiss（自動反映しない）",
       "phase": "W",
-      "status": "in_progress",
-      "notes": "コピー / 保存 / 共有 / 閉じる で received。操作まで Backend に残る。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。実機確認待ち。2026-09-27 ユーザーが iPhone 実機（ホーム画面の PWA）で確認済み: Mac → PWA の Text 受信（ユーザーは受信カードに気づきにくかった → 改善候補）"
+      "status": "done",
+      "notes": "コピー / 保存 / 共有 / 閉じる で received。操作まで Backend に残る。E2E で確認済み。2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA）で確認済み: Text・画像の受信。受信カードに気づきにくい点は改善候補"
     },
     {
       "id": "web-pwa",
       "area": "ui",
       "title": "PWA（manifest / icons / standalone / Service Worker / installability）",
       "phase": "W",
-      "status": "in_progress",
-      "notes": "manifest / icons（maskable・apple-touch-icon）/ standalone / SW（scope /app/, App Shell のみキャッシュ）。ホーム画面への追加と起動は実機確認待ち"
+      "status": "done",
+      "notes": "manifest / icons / standalone / SW（scope /app/）。2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA）で確認済み: ホーム画面に追加して standalone で起動"
     },
     {
       "id": "web-ws-foreground",
@@ -354,7 +354,7 @@
       "title": "Offline 後・起動時の未受信 Transfer 回収",
       "phase": "W",
       "status": "done",
-      "notes": "閉じている間の送信を再 Open 時に回収、未操作ならリロードでも残る。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み"
+      "notes": "E2E で確認済み。2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA）で確認済み: 機内モード中に Mac から送信 → 解除後に PWA で回収"
     },
     {
       "id": "web-share-target",
@@ -362,7 +362,7 @@
       "title": "Web Share Target（Android / Chromium のみ、Progressive Enhancement）",
       "phase": "W",
       "status": "in_progress",
-      "notes": "manifest share_target（POST multipart）を SW が受けて Preview へ。E2E はフォーム POST で模擬。Android 実機は手動確認待ち"
+      "notes": "manifest share_target（POST multipart）を SW が受けて Preview へ。E2E はフォーム POST で模擬。Android 実機が無いため保留（ユーザー判断 2026-09-27）"
     },
     {
       "id": "web-security",
@@ -377,8 +377,8 @@
       "area": "test",
       "title": "スマホ実機 E2E（音声入力 → Send → PC で受信 ほか完了条件一式）",
       "phase": "W",
-      "status": "todo",
-      "notes": "docs/TESTING.md §7 の手順。ユーザーの実機確認待ち"
+      "status": "in_progress",
+      "notes": "2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA）で確認済み: 登録・同一 Endpoint の維持・音声入力 → Mac・Mac → PWA・画像の双方向・閉じた状態の Push・Offline 後の回収。Android（Share Target）は端末が無く保留、Firefox は未確認"
     }
   ]
 }

@@ -14,7 +14,7 @@ Blog リポジトリの GitHub Actions デプロイ（OIDC）が成功し、独�
 Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 404）を返す。API のエラー JSON は不変（確認済み）。
 Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
-**Phase W（Web / PWA）実装済み・スマホ実機確認待ち（2026-09-27）。** ユーザー指示で Windows より先に着手。
+**Phase W（Web / PWA）実装済み・iPhone 実機確認済み（2026-09-27）。Android は端末が無く保留。** ユーザー指示で Windows より先に着手。
 ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pwa.md`、機能一覧 features.json の `phase: "W"`。
 - test 環境にデプロイ済み（Backend / Edge / `/app/`）。クラウド Web E2E 26/26（Chromium・WebKit、2 回連続）、
   Native ↔ Web 7/7、既存デスクトップ E2E 14/14（回帰なし）。ローカルも同じく全通過。
@@ -37,11 +37,13 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 
 ## 次にやること
 
-0. **実機確認済み（2026-09-27, iPhone のホーム画面 PWA）**: 登録、音声入力 → Send → Mac で受信、Mac → PWA の Text 受信、PWA を完全に閉じた状態での Web Push 通知。
+0. **実機確認済み（2026-09-27, iPhone のホーム画面 PWA）**: 登録、PWA / iPhone の再起動後も同じ Endpoint、音声入力 → Send → Mac で受信、Mac → PWA の Text 受信、
+   画像の双方向、PWA を完全に閉じた状態での Web Push 通知、機内モード解除後の回収。
+   **保留**: Android（Share Target 等）は端末が無いため保留（ユーザー判断）。Firefox は未確認。
    気づいた点: (a) PWA の受信カードに気づきにくい (b) Mac の送信先の初期値が一覧の先頭（旧テスト Endpoint）で誤送信しかけた
    (c) iOS はホーム画面の Web アプリと Safari で保存領域が別で、PWA 側で再登録が必要（仕様。TESTING.md に記載）
-1. **[ユーザー実機確認]** docs/TESTING.md §7 のスマホ手順（iPhone PWA: 登録・再起動後も同一 Endpoint・音声入力 → Send →
-   Mac で受信・Push 通知・機内モード後の回収、Android: Share Target、Firefox: Paste 経路）。結果で features.json を done に
+1. **[改善候補・未着手]** (a) Web の受信に気づきやすくする（トースト・受信欄へのスクロール・アプリアイコンのバッジ）
+   (b) Mac の送信先の初期値（前回の送信先を記憶する等）
 2. Phase 2（Windows）はユーザーの指示があるまで着手しない。
    GitHub リポジトリの作成（CI/CD の実行。`web-e2e` ジョブと `deploy-web.yml` を追加済み・未実行）
 3. chunk size / 並列数の実回線ベンチ
