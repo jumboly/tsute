@@ -71,6 +71,95 @@ Resources:
             Condition:
               StringEquals:
                 AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+          # 存在しないキーに S3 が 403 ではなく 404 を返すようにする（404 だけを 404 ページに差し替え、
+          # 権限ミスによる本物の 403 は隠さないため）。閲覧者からは一覧を取れない: "/" は index.html に
+          # 書き換わり、クエリ文字列はオリジンに転送されない
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:ListBucket
+            Resource: !GetAtt BlogBucket.Arn
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  # ブログの存在しない URL を、ブログ自身の /404.html の内容でステータス 404 にする。
+  # CustomErrorResponses はディストリビューション全体に効き API の JSON エラーまで置き換えてしまい、
+  # CloudFront Functions はオリジンが 4xx を返すと実行されないため、デフォルトビヘイビアだけに付けた
+  # Lambda@Edge（origin-response）で行う。
+  BlogNotFoundRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub tsute-${EnvName}-blog-notfound
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: [lambda.amazonaws.com, edgelambda.amazonaws.com] }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: blog-notfound
+          PolicyDocument:
+            Statement:
+              # Lambda@Edge は実行リージョンごとに /aws/lambda/us-east-1.<name> へログを書く
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:/aws/lambda/us-east-1.tsute-${EnvName}-blog-notfound:*
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${BlogBucket.Arn}/404.html"
+
+  BlogNotFoundFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub tsute-${EnvName}-blog-notfound
+      Description: Serve /404.html with status 404 for missing blog objects
+      # Lambda@Edge は Node.js / Python・x86_64 のみ、環境変数不可（バケット名はコードに埋め込む）
+      Runtime: nodejs22.x
+      Handler: index.handler
+      MemorySize: 128
+      Timeout: 5
+      Role: !GetAtt BlogNotFoundRole.Arn
+      Code:
+        ZipFile: !Sub |
+          'use strict';
+          const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+          const s3 = new S3Client({ region: '${AWS::Region}' });
+          // ブログのデプロイで 404.html が変わっても、数分で反映されれば十分
+          const PAGE_TTL_MS = 5 * 60 * 1000;
+          const FALLBACK = '<!doctype html><html lang="ja"><meta charset="utf-8"><title>404 Not Found</title><h1>404 Not Found</h1></html>';
+          let page = null;
+          let loadedAt = 0;
+
+          async function notFoundPage() {
+            if (page !== null && Date.now() - loadedAt < PAGE_TTL_MS) return page;
+            try {
+              const r = await s3.send(new GetObjectCommand({ Bucket: '${BlogBucket}', Key: '404.html' }));
+              page = await r.Body.transformToString('utf-8');
+              loadedAt = Date.now();
+            } catch (e) {
+              // 404 ページが読めなくても 404 自体は返す（古いキャッシュがあればそれを使う）
+              console.log('failed to load 404.html: ' + e.name);
+            }
+            return page !== null ? page : FALLBACK;
+          }
+
+          exports.handler = async (event) => {
+            const response = event.Records[0].cf.response;
+            if (response.status !== '404') return response;
+            response.statusDescription = 'Not Found';
+            response.headers['content-type'] = [{ key: 'Content-Type', value: 'text/html; charset=utf-8' }];
+            // 新しい記事を公開した直後に、その URL の 404 が長く残らないよう短めにする
+            response.headers['cache-control'] = [{ key: 'Cache-Control', value: 'max-age=300' }];
+            response.body = await notFoundPage();
+            return response;
+          };
+
+  # Lambda@Edge はバージョン番号付き ARN でしか関連付けられない。
+  # AWS::Lambda::Version はコード変更を検知しないため、関数のコードを変えたら Description を更新して新しい版を発行する
+  BlogNotFoundVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref BlogNotFoundFunction
+      Description: "v1: serve /404.html with status 404"
 
   # 静的サイトジェネレータの "/posts/foo/" → "/posts/foo/index.html" を解決する
   BlogIndexFunction:
@@ -136,6 +225,10 @@ Resources:
           FunctionAssociations:
             - EventType: viewer-request
               FunctionARN: !GetAtt BlogIndexFunction.FunctionARN
+          # デフォルトビヘイビア（ブログ）だけに付ける。/api/* と /ws のレスポンスには関与しない
+          LambdaFunctionAssociations:
+            - EventType: origin-response
+              LambdaFunctionARN: !Ref BlogNotFoundVersion
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: http-api

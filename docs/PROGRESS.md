@@ -11,6 +11,7 @@ test 環境（AWS 444369845617 / ap-northeast-1）にデプロイ済み。**ク�
 アプリ用サブドメインを Route 53 に委任（親ゾーンの DNS 事業者が ACM 検証用 CNAME を拒否したため, ADR-0009）。
 独自ドメイン経由のクラウド E2E 14/14 PASS（2 回連続）。
 Blog リポジトリの GitHub Actions デプロイ（OIDC）が成功し、独自ドメインで Astro 版 Blog を配信中。
+Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 404）を返す。API のエラー JSON は不変（確認済み）。
 Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
 **Web / PWA 追加要件を受領（2026-09-27）。** 原文 `docs/requirements/web-pwa.md`、要約 REQUIREMENTS.md、
