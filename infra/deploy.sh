@@ -23,8 +23,10 @@ if ! command -v zig >/dev/null; then
   ZIG_DIR="$(dirname "$(find "$HOME/.local/share/uv/tools/cargo-lambda" -name zig -type f 2>/dev/null | head -1)")"
   export PATH="$ZIG_DIR:$PATH"
 fi
+# ホスト向け release ビルド（デスクトップ）と proc-macro 成果物が衝突しないよう target を分ける
+export CARGO_TARGET_DIR=target/lambda-build
 cargo lambda build --release --arm64 -p tsute-server-lambda --output-format zip
-ZIP=target/lambda/tsute-lambda/bootstrap.zip
+ZIP=target/lambda-build/lambda/tsute-lambda/bootstrap.zip
 # 内容ハッシュをキーにして、コード変更時だけ Lambda が更新されるようにする
 KEY="lambda/tsute-$(shasum -a 256 "$ZIP" | cut -c1-16).zip"
 aws s3 cp --region "$AWS_REGION" --only-show-errors "$ZIP" "s3://${ARTIFACT_BUCKET}/${KEY}"

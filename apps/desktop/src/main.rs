@@ -332,7 +332,11 @@ fn main() {
             if let Some(c) = app.state::<AppState>().client() {
                 c.shutdown();
             }
-            let _ = std::fs::remove_file(app.state::<AppState>().profile().root.join("automation.sock"));
+            let root = app.state::<AppState>().profile().root;
+            if let Ok(p) = std::fs::read_to_string(root.join("automation.sock.path")) {
+                let _ = std::fs::remove_file(p);
+            }
+            let _ = std::fs::remove_file(root.join("automation.sock"));
         }
         _ => {}
     });

@@ -6,3 +6,8 @@ members = ["apps/desktop", "crates/*"]
 edition = "2024"
 version = "0.1.0"
 license = "MIT"
+
+# macOS 27 + 現行ツールチェーンでは、strip した proc-macro dylib を dyld が
+# "mis-aligned LINKEDIT string pool" で読み込めないため、proc-macro / build script だけ strip しない。
+[profile.release.build-override]
+strip = false

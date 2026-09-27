@@ -33,6 +33,10 @@ class App:
         while time.time() < deadline:
             if self.proc.poll() is not None:
                 raise RuntimeError(f"{self.profile}: app exited with {self.proc.returncode}")
+            # アプリはパス長上限を超える場合に別の場所へソケットを作り、そのパスを .sock.path に書く
+            path_file = self.sock_path.with_suffix(".sock.path")
+            if path_file.exists():
+                self.sock_path = Path(path_file.read_text())
             if self.sock_path.exists():
                 try:
                     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

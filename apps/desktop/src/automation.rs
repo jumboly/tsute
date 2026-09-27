@@ -74,8 +74,25 @@ async fn handle(app: &AppHandle, req: Value) -> Result<Value, String> {
     }
 }
 
-pub fn start(app: &AppHandle, socket: std::path::PathBuf) {
+/// Unix ソケットのパス長上限（macOS は 104 バイト）を超える場合は短い一時パスに逃がし、
+/// 実際のパスを `<profile>/automation.sock.path` に書いてドライバが見つけられるようにする
+fn resolve_socket_path(preferred: &std::path::Path) -> std::path::PathBuf {
+    if preferred.as_os_str().len() < 100 {
+        return preferred.to_path_buf();
+    }
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    preferred.hash(&mut h);
+    std::env::temp_dir().join(format!("tsute-auto-{:016x}.sock", h.finish()))
+}
+
+pub fn start(app: &AppHandle, preferred: std::path::PathBuf) {
     app.manage(Pending::default());
+    let socket = resolve_socket_path(&preferred);
+    let _ = std::fs::write(
+        preferred.with_extension("sock.path"),
+        socket.to_string_lossy().as_bytes(),
+    );
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let _ = std::fs::remove_file(&socket);
