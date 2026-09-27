@@ -24,7 +24,10 @@ Parameters:
   GitHubBlogRepo:
     Type: String
     Default: ""
-    Description: owner/repo of the blog repository. Empty = no blog deploy role.
+    Description: >-
+      Blog repository as it appears in the GitHub OIDC sub claim. With immutable subjects enabled this is
+      owner@ownerId/repo@repoId (see gh api repos/OWNER/REPO/actions/oidc/customization/sub), otherwise owner/repo.
+      Empty = no blog deploy role.
 
 Conditions:
   HasDomain: !Not [!Equals [!Ref AppDomainName, ""]]
@@ -92,6 +95,12 @@ Resources:
 
   Distribution:
     Type: AWS::CloudFront::Distribution
+    # cfn-lint は CertificateArn の既定値 "" で ARN 形式を検査するが、その値は HasDomain が真のとき
+    # （= ARN が与えられたとき）にしか使われないため W1030 は誤検知
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [W1030]
     Properties:
       DistributionConfig:
         Comment: !Sub tsute ${EnvName}
@@ -156,10 +165,11 @@ Resources:
               Federated: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
             Action: sts:AssumeRoleWithWebIdentity
             Condition:
+              # Environment（production）で保護されたジョブだけに限定する。ブランチ保護や承認を Environment 側で
+              # 掛けられ、リポジトリ内の他ワークフロー・PR からはロールを引き受けられない
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-              StringLike:
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubBlogRepo}:*
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubBlogRepo}:environment:production
       Policies:
         - PolicyName: tsute-blog-deploy
           PolicyDocument:

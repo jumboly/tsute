@@ -10,6 +10,7 @@ test 環境（AWS 444369845617 / ap-northeast-1）にデプロイ済み。**ク�
 **2026-09-27 test 環境に独自ドメインを設定**（値は `infra/env/test.env` のみ。リポジトリに書かない）。
 アプリ用サブドメインを Route 53 に委任（親ゾーンの DNS 事業者が ACM 検証用 CNAME を拒否したため, ADR-0009）。
 独自ドメイン経由のクラウド E2E 14/14 PASS（2 回連続）。
+Blog リポジトリの GitHub Actions デプロイ（OIDC）が成功し、独自ドメインで Astro 版 Blog を配信中。
 Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
 **Web / PWA 追加要件を受領（2026-09-27）。** 原文 `docs/requirements/web-pwa.md`、要約 REQUIREMENTS.md、
@@ -35,7 +36,9 @@ Phase 2（Windows）はユーザーの指示があるまで着手しない。
 2. chunk size / 並列数の実回線ベンチ
 3. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
    メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
-4. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行
+4. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行。作成したら
+   `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` を確認し、immutable subject が有効なら
+   bootstrap の `GitHubAppRepo` を `owner@ownerId/repo@repoId` 形式で更新する（ADR-0010。Blog ロールで実際に踏んだ）
 5. Phase 1 完了報告
 
 ## .app 統合チェック結果（2026-09-27, e2e/out/app-checks.json）

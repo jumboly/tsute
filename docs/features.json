@@ -234,8 +234,8 @@
       "id": "blog-repo",
       "area": "blog",
       "title": "Blog リポジトリ (Astro) と独立 CI/CD",
-      "status": "in_progress",
-      "notes": "Astro ビルドを手動同期し / で配信確認。Blog CI は未実行"
+      "status": "done",
+      "notes": "GitHub Actions（OIDC, Environment production）から sync + invalidation 成功。独自ドメインで配信を確認"
     },
     {
       "id": "e2e-macos",
