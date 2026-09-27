@@ -1,4 +1,4 @@
-//! `tsute-devserver [--bind 127.0.0.1:8787] [--data-dir DIR]`
+//! `tsute-devserver [--bind 127.0.0.1:8787] [--data-dir DIR] [--web-dir web] [--blob-delay-ms N] [--vapid-subject mailto:..]`
 //!
 //! 管理トークンは `<data-dir>/admin-token` に書き出す。ローカル専用のため
 //! 管理経路を簡素にしているが、本番では IAM で保護された Lambda 直接呼び出しを使う（ADR-0002）。
@@ -23,7 +23,19 @@ async fn main() -> std::io::Result<()> {
     std::fs::create_dir_all(&dir)?;
     let token = uuid::Uuid::new_v4().simple().to_string();
     std::fs::write(dir.join("admin-token"), &token)?;
-    let s = tsute_server_local::start(bind, dir.join("blobs"), token, Default::default()).await?;
+    // Web Push 用の VAPID 鍵はデータディレクトリに保持し、再起動しても Browser の購読が無効にならないようにする
+    let vapid_path = dir.join("vapid-private-key");
+    if !vapid_path.exists() {
+        std::fs::write(&vapid_path, tsute_webpush::generate_private_key())?;
+    }
+    let vapid_key = std::fs::read_to_string(&vapid_path)?;
+    let subject = arg("--vapid-subject").unwrap_or_else(|| "mailto:tsute-dev@example.com".into());
+    let web_dir = PathBuf::from(arg("--web-dir").unwrap_or_else(|| "web".into()));
+    let opts = tsute_server_local::Options {
+        web_dir: web_dir.is_dir().then_some(web_dir),
+        vapid: Some((vapid_key, subject)),
+    };
+    let s = tsute_server_local::start_with(bind, dir.join("blobs"), token, Default::default(), opts).await?;
     if let Some(ms) = arg("--blob-delay-ms").and_then(|v| v.parse().ok()) {
         s.state.blob_delay_ms.store(ms, std::sync::atomic::Ordering::SeqCst);
     }

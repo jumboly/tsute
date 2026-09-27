@@ -47,6 +47,32 @@ pub enum Platform {
     Other,
 }
 
+/// クライアントの種類。表示用で、送信可否などの判定には使わない（判定は `accepts` / `reach` で行う, ADR-0015）。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ClientKind {
+    /// 既存レコード・旧クライアントは欠落しているので Native とみなす
+    #[default]
+    Native,
+    Web,
+}
+
+/// Endpoint への到達手段。サーバーが接続・購読の実状態から導出し、保存はしない（古くならないため）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Reach {
+    Websocket,
+    WebPush,
+}
+
+/// Native Client が受信できる Payload。`accepts` を申告しない（旧）クライアントはこれとみなす。
+pub const NATIVE_ACCEPTS: [TransferKind; 4] = [
+    TransferKind::ClipboardText,
+    TransferKind::ClipboardImage,
+    TransferKind::ClipboardVideo,
+    TransferKind::Files,
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnrollRequest {
     pub enrollment_key: String,
@@ -54,6 +80,11 @@ pub struct EnrollRequest {
     pub platform: Platform,
     /// Ed25519 公開鍵（base64url, no pad）
     pub public_key: String,
+    #[serde(default)]
+    pub client_kind: ClientKind,
+    /// 受信できる Payload。省略時は `NATIVE_ACCEPTS`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepts: Option<Vec<TransferKind>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,8 +122,54 @@ pub struct EndpointInfo {
     pub endpoint_id: String,
     pub name: String,
     pub platform: Platform,
+    /// WebSocket 接続がある（`reach` に `websocket` を含む）。旧クライアント互換のため残す
     pub online: bool,
     pub created_at: i64,
+    #[serde(default)]
+    pub client_kind: ClientKind,
+    /// 受信できる Payload。送信側はこれで送信先の選択可否を決める（サーバーも create_transfer で強制する）
+    #[serde(default = "native_accepts")]
+    pub accepts: Vec<TransferKind>,
+    #[serde(default)]
+    pub reach: Vec<Reach>,
+}
+
+fn native_accepts() -> Vec<TransferKind> {
+    NATIVE_ACCEPTS.to_vec()
+}
+
+impl EndpointInfo {
+    pub fn can_receive(&self, kind: TransferKind) -> bool {
+        self.accepts.contains(&kind)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapabilitiesRequest {
+    pub accepts: Vec<TransferKind>,
+}
+
+/// Browser の WebSocket API は Authorization ヘッダを付けられないため、HTTP で一回限りの ticket を
+/// 発行し `Sec-WebSocket-Protocol` で渡す（ADR-0015）。
+pub const WS_SUBPROTOCOL: &str = "tsute.v1";
+pub const WS_TICKET_SUBPROTOCOL_PREFIX: &str = "ticket.";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WsTicketResponse {
+    pub ticket: String,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushConfig {
+    /// VAPID 公開鍵（非圧縮 P-256 点, base64url no pad）。`PushManager.subscribe` の applicationServerKey
+    pub vapid_public_key: String,
+}
+
+/// Push Subscription。Payload を載せない（ADR-0015）ため暗号鍵（p256dh/auth）は受け取らない。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushSubscriptionRequest {
+    pub endpoint: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

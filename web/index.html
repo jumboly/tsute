@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#1c64be">
+  <meta name="apple-mobile-web-app-title" content="つて">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>つて</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body data-view="loading" data-connection="offline">
+  <header class="topbar">
+    <div class="me">
+      <span class="dot" id="conn-dot" title="未接続"></span>
+      <strong id="me-name">つて</strong>
+    </div>
+    <button class="icon-btn" id="open-settings" aria-label="設定" hidden>⚙︎</button>
+  </header>
+
+  <main>
+    <section class="view" id="view-loading"><p class="muted">読み込み中…</p></section>
+
+    <section class="view" id="view-unsupported">
+      <h2>この Browser では使えません</h2>
+      <p id="unsupported-reason"></p>
+      <p class="muted">Safari 17 / Chrome 137 / Firefox 129 以降の Browser で、https の URL から開いてください。</p>
+    </section>
+
+    <section class="view" id="view-enroll">
+      <h2>この Browser を Endpoint として登録</h2>
+      <p class="muted">管理者から受け取った Enrollment Key を入力します。鍵はこの Browser の中で生成され、外へは出ません。</p>
+      <form id="enroll-form" autocomplete="off">
+        <label>Endpoint 名
+          <input type="text" id="enroll-name" maxlength="64" required autocomplete="off">
+        </label>
+        <label>Enrollment Key
+          <input type="text" id="enroll-key" required autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="tsute-ek-…">
+        </label>
+        <button class="primary" type="submit" id="enroll-submit">登録する</button>
+      </form>
+      <p class="error" id="enroll-error" role="alert"></p>
+    </section>
+
+    <section class="view" id="view-main">
+      <div class="banner warn" id="banner" hidden></div>
+
+      <section id="inbox-section" hidden>
+        <h3>受信</h3>
+        <ul class="cards" id="inbox"></ul>
+      </section>
+
+      <section>
+        <h3>送る内容</h3>
+        <textarea id="text" rows="5" placeholder="ここに入力・貼り付け（キーボードの音声入力も使えます）" autocomplete="off" spellcheck="false"></textarea>
+        <div class="image-preview" id="image-preview" hidden>
+          <img id="image-preview-img" alt="送信する画像のプレビュー">
+          <div>
+            <div id="image-preview-meta" class="mono"></div>
+            <button type="button" id="image-remove">画像を外す</button>
+          </div>
+        </div>
+        <div class="row">
+          <button type="button" id="read-clip" hidden>Clipboard から読み込む</button>
+          <button type="button" id="clear">クリア</button>
+          <span class="muted grow" id="payload-meta"></span>
+        </div>
+      </section>
+
+      <section>
+        <h3>送信先</h3>
+        <ul class="targets" id="targets"></ul>
+        <button class="primary wide" type="button" id="review" disabled>内容を確認して送る</button>
+      </section>
+
+      <section>
+        <h3>送信履歴</h3>
+        <ul class="history" id="history"></ul>
+      </section>
+    </section>
+
+    <section class="view" id="view-settings">
+      <h2>設定</h2>
+      <label>Endpoint 名
+        <input type="text" id="set-name" maxlength="64" autocomplete="off">
+      </label>
+      <button type="button" id="set-name-save">名前を保存</button>
+
+      <h3>通知（Web Push）</h3>
+      <p class="muted" id="push-status"></p>
+      <button type="button" id="push-toggle" hidden></button>
+
+      <h3>このEndpoint</h3>
+      <dl class="kv">
+        <dt>Endpoint ID</dt><dd class="mono" id="set-endpoint"></dd>
+        <dt>受信できるもの</dt><dd>テキスト・画像（動画・ファイルは Native App のみ）</dd>
+        <dt>鍵の保存</dt><dd id="set-persist"></dd>
+      </dl>
+
+      <h3>登録の解除</h3>
+      <p class="muted">この Browser の鍵を削除します。Backend 側の登録は管理者が revoke してください。</p>
+      <button type="button" class="danger" id="forget">この Browser の鍵を削除</button>
+
+      <p><button type="button" id="close-settings">戻る</button></p>
+    </section>
+  </main>
+
+  <dialog id="confirm">
+    <form method="dialog">
+      <h2>送信内容の確認</h2>
+      <dl class="kv">
+        <dt>送信先</dt><dd id="confirm-target"></dd>
+        <dt>種類</dt><dd id="confirm-kind"></dd>
+        <dt>サイズ</dt><dd id="confirm-size"></dd>
+      </dl>
+      <pre class="content" id="confirm-text" hidden></pre>
+      <img class="content" id="confirm-image" alt="送信する画像" hidden>
+      <p class="muted">Send を押すまで送信されません。</p>
+      <div class="row end">
+        <button value="cancel" type="submit">戻る</button>
+        <button class="primary" value="send" type="submit" id="confirm-send">Send</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

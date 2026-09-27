@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 tsute-proto = { path = "../proto" }
 tsute-server-core = { path = "../server-core" }
+tsute-webpush = { path = "../webpush" }
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"

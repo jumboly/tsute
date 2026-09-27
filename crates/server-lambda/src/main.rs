@@ -63,7 +63,12 @@ async fn handle_api(core: &AwsCore, ev: Value) -> Result<Value, Error> {
         let conn = conn.to_string();
         return Ok(match rc["eventType"].as_str().unwrap_or("") {
             "CONNECT" => match core.ws_connect(&conn, &lower_headers(&ev)).await {
-                Ok(_) => json!({"statusCode": 200}),
+                // $connect の応答で設定できるヘッダは Sec-WebSocket-Protocol のみ。要求されたものを返さないと
+                // Browser がハンドシェイクを失敗させる
+                Ok(acc) => match acc.subprotocol {
+                    Some(p) => json!({"statusCode": 200, "headers": {"Sec-WebSocket-Protocol": p}}),
+                    None => json!({"statusCode": 200}),
+                },
                 Err(e) => json!({"statusCode": e.status}),
             },
             "DISCONNECT" => {

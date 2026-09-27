@@ -142,18 +142,22 @@ impl Store for DynamoStore {
             .as_str()
             .unwrap_or("other")
             .to_string();
-        self.put(
-            HashMap::from([
-                ("endpoint_id".into(), s(&ep.endpoint_id)),
-                ("name".into(), s(&ep.name)),
-                ("platform".into(), s(platform)),
-                ("public_key".into(), s(&ep.public_key)),
-                ("created_at".into(), n(ep.created_at)),
-            ]),
-            "ENDPOINTS",
-            &format!("EP#{}", ep.endpoint_id),
-        )
-        .await
+        let mut item = HashMap::from([
+            ("endpoint_id".into(), s(&ep.endpoint_id)),
+            ("name".into(), s(&ep.name)),
+            ("platform".into(), s(platform)),
+            ("public_key".into(), s(&ep.public_key)),
+            ("created_at".into(), n(ep.created_at)),
+            (
+                "client_kind".into(),
+                s(serde_json::to_value(ep.client_kind)?.as_str().unwrap_or("native")),
+            ),
+        ]);
+        // 未申告（None）は属性自体を書かない。「全種類」と「空集合（送信専用）」を区別するため
+        if let Some(a) = &ep.accepts {
+            item.insert("accepts".into(), s(serde_json::to_string(a)?));
+        }
+        self.put(item, "ENDPOINTS", &format!("EP#{}", ep.endpoint_id)).await
     }
     async fn get_endpoint(&self, id: &str) -> Result<Option<EndpointRecord>> {
         self.get("ENDPOINTS", &format!("EP#{id}"))
@@ -262,6 +266,61 @@ impl Store for DynamoStore {
                 connection_id: get_s(&i, "sk")?.trim_start_matches("C#").to_string(),
                 endpoint_id: get_s(&i, "endpoint_id")?,
                 connected_at: get_n(&i, "connected_at").unwrap_or(0),
+                expires_at: exp,
+            });
+        }
+        Ok(out)
+    }
+    async fn put_ws_ticket(&self, h: &str, ep: &str, exp: i64) -> Result<()> {
+        self.put(
+            HashMap::from([("endpoint_id".into(), s(ep)), ("ttl".into(), n(exp))]),
+            &format!("WSTICKET#{h}"),
+            "-",
+        )
+        .await
+    }
+    async fn consume_ws_ticket(&self, h: &str, now: i64) -> Result<Option<String>> {
+        Ok(self
+            .consume(&format!("WSTICKET#{h}"), now)
+            .await?
+            .and_then(|i| get_s(&i, "endpoint_id").ok()))
+    }
+    async fn put_push_subscription(&self, sub: &PushSubscriptionRecord) -> Result<()> {
+        // CONNS と同じく単一パーティションに置く: reach の導出で全件を 1 Query で読むため（件数は小さい）
+        self.put(
+            HashMap::from([
+                ("endpoint_id".into(), s(&sub.endpoint_id)),
+                ("url".into(), s(&sub.url)),
+                ("updated_at_us".into(), n(sub.updated_at_us)),
+                ("ttl".into(), n(sub.expires_at)),
+            ]),
+            "PUSHSUBS",
+            &format!("P#{}#{}", sub.endpoint_id, sub.url_hash),
+        )
+        .await
+    }
+    async fn delete_push_subscription(&self, ep: &str, h: &str) -> Result<()> {
+        self.client
+            .delete_item()
+            .table_name(&self.table)
+            .set_key(Some(Self::key("PUSHSUBS", &format!("P#{ep}#{h}"))))
+            .send()
+            .await?;
+        Ok(())
+    }
+    async fn list_push_subscriptions(&self, now: i64) -> Result<Vec<PushSubscriptionRecord>> {
+        let mut out = Vec::new();
+        for i in self.query("PUSHSUBS", Some("P#")).await? {
+            let exp = get_n(&i, "ttl")?;
+            if exp <= now {
+                continue;
+            }
+            let sk = get_s(&i, "sk")?;
+            out.push(PushSubscriptionRecord {
+                endpoint_id: get_s(&i, "endpoint_id")?,
+                url_hash: sk.rsplit('#').next().unwrap_or("").to_string(),
+                url: get_s(&i, "url")?,
+                updated_at_us: get_n(&i, "updated_at_us").unwrap_or(0),
                 expires_at: exp,
             });
         }
@@ -376,6 +435,15 @@ fn endpoint_from(i: &Item) -> Result<EndpointRecord> {
             .unwrap_or(Platform::Other),
         public_key: get_s(i, "public_key")?,
         created_at: get_n(i, "created_at")?,
+        client_kind: i
+            .get("client_kind")
+            .and_then(|v| v.as_s().ok())
+            .and_then(|v| serde_json::from_value(serde_json::Value::String(v.clone())).ok())
+            .unwrap_or_default(),
+        accepts: match i.get("accepts").and_then(|v| v.as_s().ok()) {
+            Some(j) => Some(serde_json::from_str(j)?),
+            None => None,
+        },
     })
 }
 

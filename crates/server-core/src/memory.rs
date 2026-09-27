@@ -14,6 +14,8 @@ struct Inner {
     challenges: HashMap<String, (String, i64)>,
     tokens: HashMap<String, (String, i64)>,
     conns: BTreeMap<String, ConnectionRecord>,
+    ws_tickets: HashMap<String, (String, i64)>,
+    push_subs: BTreeMap<(String, String), PushSubscriptionRecord>,
     transfers: BTreeMap<String, Transfer>,
     file_sha: HashMap<(String, u32), String>,
     chunks: BTreeMap<(String, u32, u32), ChunkInfo>,
@@ -85,6 +87,30 @@ impl Store for MemoryStore {
     }
     async fn list_connections(&self, now: i64) -> Result<Vec<ConnectionRecord>> {
         Ok(self.with(|i| i.conns.values().filter(|c| c.expires_at > now).cloned().collect()))
+    }
+    async fn put_ws_ticket(&self, h: &str, ep: &str, exp: i64) -> Result<()> {
+        self.with(|i| i.ws_tickets.insert(h.into(), (ep.into(), exp)));
+        Ok(())
+    }
+    async fn consume_ws_ticket(&self, h: &str, now: i64) -> Result<Option<String>> {
+        Ok(self.with(|i| match i.ws_tickets.remove(h) {
+            Some((ep, exp)) if exp > now => Some(ep),
+            _ => None,
+        }))
+    }
+    async fn put_push_subscription(&self, s: &PushSubscriptionRecord) -> Result<()> {
+        self.with(|i| {
+            i.push_subs
+                .insert((s.endpoint_id.clone(), s.url_hash.clone()), s.clone())
+        });
+        Ok(())
+    }
+    async fn delete_push_subscription(&self, ep: &str, h: &str) -> Result<()> {
+        self.with(|i| i.push_subs.remove(&(ep.to_string(), h.to_string())));
+        Ok(())
+    }
+    async fn list_push_subscriptions(&self, now: i64) -> Result<Vec<PushSubscriptionRecord>> {
+        Ok(self.with(|i| i.push_subs.values().filter(|s| s.expires_at > now).cloned().collect()))
     }
     async fn put_transfer(&self, t: &Transfer) -> Result<()> {
         self.with(|i| i.transfers.insert(t.transfer_id.clone(), t.clone()));

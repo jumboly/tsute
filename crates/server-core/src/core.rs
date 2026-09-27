@@ -15,6 +15,9 @@ use crate::traits::*;
 
 pub const ENROLLMENT_KEY_PREFIX: &str = "tsute-ek-";
 const TOKEN_PREFIX: &str = "tsute-at-";
+const WS_TICKET_PREFIX: &str = "tsute-wt-";
+/// 1 Endpoint が持てる Push Subscription の上限（同じ Browser の再購読で増え続けないように）
+const MAX_PUSH_SUBSCRIPTIONS_PER_ENDPOINT: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -25,6 +28,10 @@ pub struct Config {
     pub presign_ttl_secs: u64,
     /// API Gateway の最大接続時間(2h)より長くし、切断イベントを取りこぼした接続を最終的に消す
     pub connection_ttl_secs: i64,
+    /// 発行直後に接続する用途なので短く（漏れても使える時間を最小にする）
+    pub ws_ticket_ttl_secs: i64,
+    /// Web Client は起動のたびに購読を再登録して延長する。使われなくなった購読はこの期間で消える
+    pub push_subscription_ttl_secs: i64,
 }
 
 impl Default for Config {
@@ -36,6 +43,8 @@ impl Default for Config {
             transfer_ttl_secs: 7 * 24 * 3600,
             presign_ttl_secs: 30 * 60,
             connection_ttl_secs: 3 * 3600,
+            ws_ticket_ttl_secs: 30,
+            push_subscription_ttl_secs: 60 * 24 * 3600,
         }
     }
 }
@@ -110,6 +119,13 @@ pub fn now() -> i64 {
         .as_secs() as i64
 }
 
+fn now_us() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_micros() as i64
+}
+
 fn random_token(prefix: &str, bytes: usize) -> String {
     let mut b = vec![0u8; bytes];
     rand::rngs::OsRng.fill_bytes(&mut b);
@@ -149,6 +165,50 @@ fn validate_file_name(name: &str) -> ApiResult<()> {
     }
 }
 
+fn validate_accepts(accepts: Vec<TransferKind>) -> Vec<TransferKind> {
+    // 集合として扱う（重複した申告で表示や判定がぶれないように）
+    let mut out: Vec<TransferKind> = Vec::new();
+    for k in accepts {
+        if !out.contains(&k) {
+            out.push(k);
+        }
+    }
+    out
+}
+
+/// Push Subscription の URL として受け付けるホスト。任意 URL を許すと、サーバーから内部ネットワークや
+/// 第三者へリクエストを送らせる SSRF の踏み台になるため、主要な push service に限定する。
+const PUSH_SERVICE_HOSTS: &[&str] = &[
+    "fcm.googleapis.com",
+    "updates.push.services.mozilla.com",
+    "push.apple.com",
+    "notify.windows.com",
+];
+
+pub fn is_allowed_push_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    // userinfo（"host@evil"）やポート指定を含む URL は正規の購読では現れないので拒否する
+    if authority.contains('@') || authority.contains(':') || url.len() > 2048 {
+        return false;
+    }
+    let host = authority.to_ascii_lowercase();
+    PUSH_SERVICE_HOSTS
+        .iter()
+        .any(|h| host == *h || host.ends_with(&format!(".{h}")))
+}
+
+/// Web Socket の $connect で認証に成功した結果
+#[derive(Debug, Clone)]
+pub struct WsAccepted {
+    pub endpoint_id: String,
+    /// ハンドシェイク応答で echo すべきサブプロトコル（ticket で認証した Browser のみ）。
+    /// クライアントが要求したサブプロトコルを返さないと Browser は接続を失敗させる
+    pub subprotocol: Option<&'static str>,
+}
+
 fn validate_endpoint_name(name: &str) -> ApiResult<String> {
     let n = name.trim();
     if n.is_empty() || n.chars().count() > 64 || n.chars().any(|c| c.is_control()) {
@@ -157,23 +217,39 @@ fn validate_endpoint_name(name: &str) -> ApiResult<String> {
     Ok(n.to_string())
 }
 
-pub struct Core<S, B, N> {
+pub struct Core<S, B, N, P = NoPush> {
     pub store: S,
     pub blob: B,
     pub notifier: N,
+    pub pusher: P,
     pub cfg: Config,
 }
 
-impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
+impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N, NoPush> {
     pub fn new(store: S, blob: B, notifier: N, cfg: Config) -> Self {
         Self {
             store,
             blob,
             notifier,
+            pusher: NoPush,
             cfg,
         }
     }
+}
 
+impl<S, B, N, P> Core<S, B, N, P> {
+    pub fn with_pusher<P2: Pusher>(self, pusher: P2) -> Core<S, B, N, P2> {
+        Core {
+            store: self.store,
+            blob: self.blob,
+            notifier: self.notifier,
+            pusher,
+            cfg: self.cfg,
+        }
+    }
+}
+
+impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
     // ---------- 管理操作（IAM で保護された経路からのみ呼ぶ） ----------
 
     pub async fn issue_enrollment_key(&self) -> Result<(String, i64)> {
@@ -186,6 +262,12 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
     pub async fn revoke_endpoint(&self, endpoint_id: &str) -> Result<()> {
         self.store.delete_endpoint(endpoint_id).await?;
         self.store.delete_tokens_of(endpoint_id).await?;
+        // 失効した Endpoint へ Push し続けないよう購読も消す
+        for s in self.store.list_push_subscriptions(now()).await? {
+            if s.endpoint_id == endpoint_id {
+                self.store.delete_push_subscription(endpoint_id, &s.url_hash).await?;
+            }
+        }
         // 失効した Endpoint が関わる未完了の転送は完了し得ないので、取り消して一時データを即削除する
         for t in self.store.list_transfers(now()).await? {
             if (t.sender == endpoint_id || t.receiver == endpoint_id)
@@ -246,6 +328,14 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
                 match (m, seg.as_slice()) {
                     ("GET", ["api", "me"]) => self.me(&me).await,
                     ("PUT", ["api", "me", "name"]) => self.rename(&me, parse(&req.body)?).await,
+                    ("PUT", ["api", "me", "capabilities"]) => self.set_capabilities(&me, parse(&req.body)?).await,
+                    ("POST", ["api", "ws-ticket"]) => self.ws_ticket(&me).await,
+                    ("GET", ["api", "push", "config"]) => match self.pusher.vapid_public_key() {
+                        Some(k) => Ok(Response::json(200, &PushConfig { vapid_public_key: k })),
+                        None => Err(ApiErr::new(404, "push_disabled", "web push is not configured")),
+                    },
+                    ("PUT", ["api", "push", "subscription"]) => self.put_push(&me, parse(&req.body)?).await,
+                    ("DELETE", ["api", "push", "subscription"]) => self.delete_push(&me, parse(&req.body)?).await,
                     ("GET", ["api", "endpoints"]) => Ok(Response::json(
                         200,
                         &EndpointList {
@@ -325,6 +415,8 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
             platform: r.platform,
             public_key: r.public_key,
             created_at: now(),
+            client_kind: r.client_kind,
+            accepts: r.accepts.map(validate_accepts),
         };
         self.store.put_endpoint(&ep).await?;
         tracing::info!(endpoint_id = %ep.endpoint_id, "endpoint enrolled");
@@ -384,12 +476,91 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
 
     async fn endpoint_infos(&self) -> Result<Vec<EndpointInfo>> {
         let conns = self.store.list_connections(now()).await?;
+        let subs = if self.pusher.vapid_public_key().is_some() {
+            self.store.list_push_subscriptions(now()).await?
+        } else {
+            // Push を送れない環境では購読があっても到達手段にならない
+            vec![]
+        };
         let mut eps = self.store.list_endpoints().await?;
         eps.sort_by_key(|e| e.created_at);
         Ok(eps
             .iter()
-            .map(|e| e.info(conns.iter().any(|c| c.endpoint_id == e.endpoint_id)))
+            .map(|e| {
+                let mut reach = Vec::new();
+                if conns.iter().any(|c| c.endpoint_id == e.endpoint_id) {
+                    reach.push(Reach::Websocket);
+                }
+                if subs.iter().any(|s| s.endpoint_id == e.endpoint_id) {
+                    reach.push(Reach::WebPush);
+                }
+                e.info(reach)
+            })
             .collect())
+    }
+
+    async fn set_capabilities(&self, me: &str, r: CapabilitiesRequest) -> ApiResult<Response> {
+        let mut ep = self.store.get_endpoint(me).await?.ok_or_else(ApiErr::unauthorized)?;
+        ep.accepts = Some(validate_accepts(r.accepts));
+        self.store.put_endpoint(&ep).await?;
+        self.broadcast(None, &ServerEvent::EndpointsChanged).await;
+        self.me(me).await
+    }
+
+    async fn ws_ticket(&self, me: &str) -> ApiResult<Response> {
+        let ticket = random_token(WS_TICKET_PREFIX, 24);
+        let exp = now() + self.cfg.ws_ticket_ttl_secs;
+        self.store.put_ws_ticket(&secret_hash(&ticket), me, exp).await?;
+        Ok(Response::json(
+            200,
+            &WsTicketResponse {
+                ticket,
+                expires_at: exp,
+            },
+        ))
+    }
+
+    async fn put_push(&self, me: &str, r: PushSubscriptionRequest) -> ApiResult<Response> {
+        if self.pusher.vapid_public_key().is_none() {
+            return Err(ApiErr::new(404, "push_disabled", "web push is not configured"));
+        }
+        if !is_allowed_push_url(&r.endpoint) {
+            return Err(ApiErr::bad("push endpoint is not an allowed push service"));
+        }
+        let h = secret_hash(&r.endpoint);
+        let mut mine: Vec<PushSubscriptionRecord> = self
+            .store
+            .list_push_subscriptions(now())
+            .await?
+            .into_iter()
+            .filter(|s| s.endpoint_id == me && s.url_hash != h)
+            .collect();
+        // 上限を超えたら古いものから消す（Browser が購読を作り直すと古い URL は届かなくなるため）
+        mine.sort_by_key(|s| s.updated_at_us);
+        while mine.len() >= MAX_PUSH_SUBSCRIPTIONS_PER_ENDPOINT {
+            let old = mine.remove(0);
+            self.store.delete_push_subscription(me, &old.url_hash).await?;
+        }
+        self.store
+            .put_push_subscription(&PushSubscriptionRecord {
+                endpoint_id: me.into(),
+                url_hash: h,
+                url: r.endpoint,
+                updated_at_us: now_us(),
+                expires_at: now() + self.cfg.push_subscription_ttl_secs,
+            })
+            .await?;
+        self.broadcast(None, &ServerEvent::EndpointsChanged).await;
+        Ok(Response::json(200, &serde_json::json!({"ok": true})))
+    }
+
+    async fn delete_push(&self, me: &str, r: PushSubscriptionRequest) -> ApiResult<Response> {
+        // キーに自分の endpoint_id を含むため、他 Endpoint の購読は消せない
+        self.store
+            .delete_push_subscription(me, &secret_hash(&r.endpoint))
+            .await?;
+        self.broadcast(None, &ServerEvent::EndpointsChanged).await;
+        Ok(Response::json(200, &serde_json::json!({"ok": true})))
     }
 
     async fn me(&self, me: &str) -> ApiResult<Response> {
@@ -420,8 +591,18 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         if r.receiver == me {
             return Err(ApiErr::bad("cannot send to self"));
         }
-        if self.store.get_endpoint(&r.receiver).await?.is_none() {
-            return Err(ApiErr::bad("unknown receiver"));
+        let receiver = self
+            .store
+            .get_endpoint(&r.receiver)
+            .await?
+            .ok_or_else(|| ApiErr::bad("unknown receiver"))?;
+        // UI を迂回した呼び出しでも、受信側が扱えない Payload は作らない（ADR-0015 の多層防御）
+        if !receiver.accepts().contains(&r.kind) {
+            return Err(ApiErr::new(
+                422,
+                "receiver_cannot_accept",
+                "the receiver endpoint cannot receive this kind of payload",
+            ));
         }
         let chunk_size = r.chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE);
         if !(MIN_CHUNK_SIZE..=MAX_CHUNK_SIZE).contains(&chunk_size) {
@@ -488,13 +669,18 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         };
         self.store.put_transfer(&t).await?;
         tracing::info!(transfer_id = %t.transfer_id, kind = ?t.kind, bytes = t.total_bytes(), "transfer created");
-        self.notify_endpoint(
-            &t.receiver,
-            &ServerEvent::TransferCreated {
-                transfer: Box::new(t.clone()),
-            },
-        )
-        .await;
+        let delivered = self
+            .notify_endpoint(
+                &t.receiver,
+                &ServerEvent::TransferCreated {
+                    transfer: Box::new(t.clone()),
+                },
+            )
+            .await;
+        // Foreground の WebSocket で届いたときは Push しない（iOS は Push ごとに通知表示が必須で二重になるため）
+        if !delivered {
+            self.push_endpoint(&t.receiver).await;
+        }
         Ok(Response::json(200, &t))
     }
 
@@ -723,13 +909,44 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
 
     // ---------- WebSocket ----------
 
+    /// Browser 用: `Sec-WebSocket-Protocol: tsute.v1, ticket.<ticket>` の ticket を一回限りで消費する。
+    /// URL クエリにしないのは CloudFront / API Gateway のアクセスログに残りうるため。
+    async fn authenticate_ticket(&self, headers: &HashMap<String, String>) -> ApiResult<String> {
+        let protos: Vec<&str> = headers
+            .get("sec-websocket-protocol")
+            .map(|v| v.split(',').map(str::trim).collect())
+            .unwrap_or_default();
+        if !protos.contains(&WS_SUBPROTOCOL) {
+            return Err(ApiErr::unauthorized());
+        }
+        let ticket = protos
+            .iter()
+            .find_map(|p| p.strip_prefix(WS_TICKET_SUBPROTOCOL_PREFIX))
+            .filter(|t| t.starts_with(WS_TICKET_PREFIX))
+            .ok_or_else(ApiErr::unauthorized)?;
+        let ep = self
+            .store
+            .consume_ws_ticket(&secret_hash(ticket), now())
+            .await?
+            .ok_or_else(ApiErr::unauthorized)?;
+        if self.store.get_endpoint(&ep).await?.is_none() {
+            return Err(ApiErr::unauthorized());
+        }
+        Ok(ep)
+    }
+
     /// $connect。Err を返すと接続を拒否する。
     pub async fn ws_connect(
         &self,
         connection_id: &str,
         headers: &HashMap<String, String>,
-    ) -> std::result::Result<String, ApiErr> {
-        let ep = self.authenticate(headers).await?;
+    ) -> std::result::Result<WsAccepted, ApiErr> {
+        // Native は従来どおり Authorization ヘッダ。ヘッダが無いときだけ ticket を見る
+        let (ep, subprotocol) = if headers.contains_key("authorization") {
+            (self.authenticate(headers).await?, None)
+        } else {
+            (self.authenticate_ticket(headers).await?, Some(WS_SUBPROTOCOL))
+        };
         self.store
             .put_connection(&ConnectionRecord {
                 connection_id: connection_id.into(),
@@ -747,7 +964,10 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
             },
         )
         .await;
-        Ok(ep)
+        Ok(WsAccepted {
+            endpoint_id: ep,
+            subprotocol,
+        })
     }
 
     pub async fn ws_disconnect(&self, connection_id: &str) -> Result<()> {
@@ -801,25 +1021,58 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         }
     }
 
-    async fn send_or_prune(&self, c: &ConnectionRecord, ev: &ServerEvent) {
+    /// 送れたら true
+    async fn send_or_prune(&self, c: &ConnectionRecord, ev: &ServerEvent) -> bool {
         match self.notifier.send(&c.connection_id, ev).await {
-            Ok(true) => {}
+            Ok(true) => true,
             // 接続直後（API Gateway の $connect 完了前）は送信が失敗し得るが、切断ではないので消さない
             Ok(false) if now() - c.connected_at > 30 => {
                 let _ = self.store.delete_connection(&c.connection_id).await;
+                false
             }
-            Ok(false) => {}
+            Ok(false) => false,
             // 通知はベストエフォート。クライアントは HTTP で再同期できるので失敗で API を失敗させない
-            Err(e) => tracing::warn!(error = %e, "notify failed"),
+            Err(e) => {
+                tracing::warn!(error = %e, "notify failed");
+                false
+            }
         }
     }
 
-    async fn notify_endpoint(&self, endpoint_id: &str, ev: &ServerEvent) {
+    /// いずれかの接続へ送れたら true
+    async fn notify_endpoint(&self, endpoint_id: &str, ev: &ServerEvent) -> bool {
         let Ok(conns) = self.store.list_connections(now()).await else {
+            return false;
+        };
+        let mut delivered = false;
+        for c in conns.iter().filter(|c| c.endpoint_id == endpoint_id) {
+            delivered |= self.send_or_prune(c, ev).await;
+        }
+        delivered
+    }
+
+    /// Web Push はヒントに過ぎない（本文は App が起動後に API から取る）ので、失敗しても API は成功させる
+    async fn push_endpoint(&self, endpoint_id: &str) {
+        if self.pusher.vapid_public_key().is_none() {
+            return;
+        }
+        let Ok(subs) = self.store.list_push_subscriptions(now()).await else {
             return;
         };
-        for c in conns.iter().filter(|c| c.endpoint_id == endpoint_id) {
-            self.send_or_prune(c, ev).await;
+        for s in subs.iter().filter(|s| s.endpoint_id == endpoint_id) {
+            // 保存時にも検証しているが、送信直前にも確かめて SSRF の余地を残さない
+            if !is_allowed_push_url(&s.url) {
+                let _ = self.store.delete_push_subscription(endpoint_id, &s.url_hash).await;
+                continue;
+            }
+            match self.pusher.push(&s.url).await {
+                Ok(PushOutcome::Sent) => {}
+                Ok(PushOutcome::Gone) => {
+                    tracing::info!(endpoint_id, "push subscription gone");
+                    let _ = self.store.delete_push_subscription(endpoint_id, &s.url_hash).await;
+                }
+                Err(e) => tracing::warn!(error = %e, "push failed"),
+            }
         }
     }
 

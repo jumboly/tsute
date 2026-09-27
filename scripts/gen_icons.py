@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """アイコン PNG を依存ライブラリなしで生成する。
 
+`python3 scripts/gen_icons.py` → デスクトップ用、`python3 scripts/gen_icons.py --web web/icons` → PWA 用。
+
 なぜ: 画像編集ツールや追加パッケージなしで CI/ローカルとも再現可能にするため。
 デザインは暫定（円＋「つて」を表す2点を結ぶ線）で、後で差し替え可能。
 """
@@ -70,6 +72,25 @@ def tray_unread_icon(size):
         a = max(dot, 0 if d < 0.23 else g)
         return (0, 0, 0, int(255 * a))
     return px
+
+def square_icon(size, scale):
+    # PWA の maskable / apple-touch-icon 用: 全面を背景色で塗り、図柄を中央の scale 倍に縮める。
+    # OS が任意の形（円・角丸）で切り抜くため、図柄を安全領域（中央 80%）に収める必要がある
+    def px(x, y):
+        c = (size - 1) / 2
+        g = glyph(size, (x - c) / scale + c, (y - c) / scale + c)
+        return (int(28 * (1 - g) + 255 * g), int(100 * (1 - g) + 255 * g), int(190 * (1 - g) + 255 * g), 255)
+    return px
+
+if len(sys.argv) > 2 and sys.argv[1] == "--web":
+    out = sys.argv[2]
+    os.makedirs(out, exist_ok=True)
+    write_png(f"{out}/icon-192.png", 192, 192, app_icon(192))
+    write_png(f"{out}/icon-512.png", 512, 512, app_icon(512))
+    write_png(f"{out}/maskable-512.png", 512, 512, square_icon(512, 0.7))
+    write_png(f"{out}/apple-touch-icon.png", 180, 180, square_icon(180, 0.8))
+    print("ok")
+    sys.exit(0)
 
 out = sys.argv[1] if len(sys.argv) > 1 else "apps/desktop/icons"
 os.makedirs(out, exist_ok=True)

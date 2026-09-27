@@ -25,6 +25,7 @@ use sha2::{Digest, Sha256};
 use tsute_server_core::memory::{ChannelNotifier, MemoryStore};
 use tsute_server_core::traits::{BlobStore, PresignedPut, Result as CoreResult};
 use tsute_server_core::{Config, Core, Request};
+use tsute_webpush::VapidPusher;
 
 /// ファイルシステム上の Object Storage。URL は HMAC で署名し、S3 presigned URL と同様に
 /// 「期限付き・対象キー固定・PUT は内容の checksum 固定」という性質を再現する。
@@ -91,7 +92,21 @@ impl BlobStore for FsBlobStore {
     }
 }
 
-pub type LocalCore = Core<MemoryStore, FsBlobStore, ChannelNotifier>;
+pub type LocalCore = Core<MemoryStore, FsBlobStore, ChannelNotifier, Option<VapidPusher>>;
+
+/// 本番の `/app/*`（CloudFront の ResponseHeadersPolicy）と同じ方針の CSP。
+/// ローカルは presigned URL（/blob）も同一オリジンなので connect-src は 'self' だけで足りる
+pub const APP_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; \
+img-src 'self' blob: data:; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; \
+form-action 'self'; frame-ancestors 'none'";
+
+#[derive(Default)]
+pub struct Options {
+    /// Web / PWA Client（リポジトリの `web/`）。指定すると `/app/` で配信する
+    pub web_dir: Option<PathBuf>,
+    /// VAPID 秘密鍵（base64url）と subject。指定すると実際の push service へ Web Push を送る
+    pub vapid: Option<(String, String)>,
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -102,6 +117,7 @@ pub struct AppState {
     /// blob 転送ごとの人工遅延（ms）。ローカルでは転送が一瞬で終わり「転送中」の挙動（overlap・中断→再開）を
     /// E2E で捉えられないため、回線の遅さを模擬する
     pub blob_delay_ms: Arc<std::sync::atomic::AtomicU64>,
+    pub web_dir: Option<Arc<PathBuf>>,
 }
 
 pub struct Server {
@@ -118,6 +134,20 @@ impl Server {
 }
 
 pub async fn start(bind: SocketAddr, data_dir: PathBuf, admin_token: String, cfg: Config) -> std::io::Result<Server> {
+    start_with(bind, data_dir, admin_token, cfg, Options::default()).await
+}
+
+pub async fn start_with(
+    bind: SocketAddr,
+    data_dir: PathBuf,
+    admin_token: String,
+    cfg: Config,
+    opts: Options,
+) -> std::io::Result<Server> {
+    let pusher = match &opts.vapid {
+        Some((key, subject)) => Some(VapidPusher::new(key, subject).map_err(std::io::Error::other)?),
+        None => None,
+    };
     let listener = tokio::net::TcpListener::bind(bind).await?;
     let addr = listener.local_addr()?;
     let base_url = format!("http://{addr}");
@@ -127,12 +157,14 @@ pub async fn start(bind: SocketAddr, data_dir: PathBuf, admin_token: String, cfg
         FsBlobStore::new(data_dir, base_url.clone()),
         ChannelNotifier::default(),
         cfg,
-    );
+    )
+    .with_pusher(pusher);
     let state = AppState {
         core: Arc::new(core),
         admin_token: Arc::new(admin_token),
         fail_blobs: Arc::new(Default::default()),
         blob_delay_ms: Arc::new(Default::default()),
+        web_dir: opts.web_dir.map(Arc::new),
     };
     let app = Router::new()
         .route("/ws", get(ws_handler))
@@ -145,6 +177,9 @@ pub async fn start(bind: SocketAddr, data_dir: PathBuf, admin_token: String, cfg
             )),
         )
         .route("/api/{*rest}", any(api))
+        .route("/app", get(|| async { axum::response::Redirect::permanent("/app/") }))
+        .route("/app/", get(app_static))
+        .route("/app/{*path}", get(app_static).post(app_static))
         .with_state(state.clone());
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.expect("serve");
@@ -181,6 +216,45 @@ async fn api(State(st): State<AppState>, method: Method, uri: Uri, headers: Head
         StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
         [("content-type", "application/json")],
         r.body,
+    )
+        .into_response()
+}
+
+/// `/app/*` の静的配信。本番の S3 + CloudFront（`/app/` → index.html, CSP 等のヘッダ）を模す
+async fn app_static(State(st): State<AppState>, uri: Uri) -> Response {
+    let Some(dir) = st.web_dir.as_deref() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let rel = uri.path().trim_start_matches("/app/").trim_start_matches("/app");
+    let rel = if rel.is_empty() { "index.html" } else { rel };
+    if rel.split('/').any(|s| s == ".." || s.is_empty() || s.starts_with('.')) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let Ok(body) = tokio::fs::read(dir.join(rel)).await else {
+        // Share Target の POST 等は Service Worker が処理する。SW が無い（未インストール）ときの受け皿
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let ext = rel.rsplit('.').next().unwrap_or("");
+    let ctype = match ext {
+        "html" => "text/html; charset=utf-8",
+        "js" => "text/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "webmanifest" => "application/manifest+json",
+        "png" => "image/png",
+        "svg" => "image/svg+xml",
+        "json" => "application/json",
+        _ => "application/octet-stream",
+    };
+    (
+        [
+            ("content-type", ctype),
+            ("content-security-policy", APP_CSP),
+            ("x-content-type-options", "nosniff"),
+            ("referrer-policy", "no-referrer"),
+            // 開発中の変更を即時反映させる（本番は deploy 時にファイル種別ごとに Cache-Control を付ける）
+            ("cache-control", "no-cache"),
+        ],
+        body,
     )
         .into_response()
 }
@@ -274,7 +348,15 @@ async fn ws_handler(State(st): State<AppState>, headers: HeaderMap, ws: WebSocke
     let rx = st.core.notifier.register(&conn_id);
     // API Gateway の $connect と同様、ハンドシェイク完了前に認証して拒否できるようにする
     match st.core.ws_connect(&conn_id, &h).await {
-        Ok(ep) => ws.on_upgrade(move |socket| ws_session(st, socket, conn_id, ep, rx)),
+        Ok(acc) => {
+            // Browser（ticket 認証）には要求されたサブプロトコルを echo する（API Gateway の $connect 応答と同じ）
+            let ws = match acc.subprotocol {
+                Some(p) => ws.protocols([p]),
+                None => ws,
+            };
+            let ep = acc.endpoint_id;
+            ws.on_upgrade(move |socket| ws_session(st, socket, conn_id, ep, rx))
+        }
         Err(e) => {
             st.core.notifier.unregister(&conn_id);
             StatusCode::from_u16(e.status)

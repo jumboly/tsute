@@ -68,6 +68,9 @@ pub async fn enroll(base_url: &str, key: &SigningKey, enrollment_key: &str, name
             Platform::Other
         },
         public_key: URL_SAFE_NO_PAD.encode(key.verifying_key().as_bytes()),
+        client_kind: ClientKind::Native,
+        // Native は全種類を受信できる。明示しておくと、将来 Native 側で種類を増減したときにも申告で表せる
+        accepts: Some(NATIVE_ACCEPTS.to_vec()),
     };
     let resp = http_client()
         .post(format!("{base_url}/api/enroll"))

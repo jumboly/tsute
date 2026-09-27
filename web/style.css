@@ -1,0 +1,124 @@
+/* デスクトップ UI（apps/desktop/ui/style.css）と同じ配色で、スマホの縦画面を主対象にする */
+:root {
+  color-scheme: light dark;
+  --bg: #f5f5f7;
+  --panel: #ffffff;
+  --fg: #1d1d1f;
+  --muted: #6e6e73;
+  --line: #d2d2d7;
+  --accent: #1c64c4;
+  --accent-fg: #fff;
+  --danger: #c4231c;
+  --ok: #2e9d4f;
+  --warn-bg: #fff4d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e20;
+    --panel: #2a2a2d;
+    --fg: #f2f2f7;
+    --muted: #a1a1a6;
+    --line: #3a3a3e;
+    --accent: #3d8bfd;
+    --warn-bg: #4a3d12;
+  }
+}
+* { box-sizing: border-box; }
+/* .image-preview や img.content の display 指定が hidden 属性を打ち消さないように */
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Segoe UI", "Noto Sans JP", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100dvh;
+  -webkit-text-size-adjust: 100%;
+}
+.topbar {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.me { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.me strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
+body[data-connection=online] .dot { background: var(--ok); }
+body[data-connection=connecting] .dot { background: #e0a100; }
+.icon-btn { background: none; border: none; font-size: 22px; padding: 4px 8px; color: var(--fg); cursor: pointer; }
+
+main { max-width: 640px; margin: 0 auto; padding: 0 16px calc(env(safe-area-inset-bottom) + 24px); }
+.view { display: none; padding-top: 12px; }
+body[data-view=loading] #view-loading,
+body[data-view=unsupported] #view-unsupported,
+body[data-view=enroll] #view-enroll,
+body[data-view=main] #view-main,
+body[data-view=settings] #view-settings { display: block; }
+
+h2 { font-size: 20px; margin: 8px 0 12px; }
+h3 { font-size: 14px; margin: 22px 0 8px; color: var(--muted); font-weight: 600; }
+p { margin: 8px 0; }
+.muted { color: var(--muted); font-size: 14px; }
+.error { color: var(--danger); font-size: 14px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; word-break: break-all; }
+.grow { flex: 1; }
+.banner { padding: 10px 12px; border-radius: 10px; font-size: 14px; margin-top: 8px; }
+.banner.warn { background: var(--warn-bg); }
+
+label { display: block; margin: 12px 0; color: var(--muted); font-size: 14px; }
+input[type=text], textarea {
+  display: block; width: 100%; margin-top: 4px; padding: 10px 12px;
+  /* 16px 未満だと iOS Safari がフォーカス時に自動ズームする */
+  font: inherit; font-size: 16px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--fg);
+}
+textarea { resize: vertical; min-height: 7.5em; }
+button {
+  font: inherit; font-size: 15px; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); cursor: pointer; touch-action: manipulation;
+}
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+button.danger { color: var(--danger); }
+button.wide { width: 100%; margin-top: 12px; padding: 13px; font-size: 17px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.row.end { justify-content: flex-end; }
+
+ul { list-style: none; margin: 0; padding: 0; }
+.targets li label {
+  display: flex; gap: 10px; align-items: flex-start; margin: 0 0 6px; padding: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; color: var(--fg); font-size: 15px;
+}
+.targets li label:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.targets li label:has(input:disabled) { opacity: .55; }
+.targets input { margin-top: 4px; }
+.targets .sub { display: block; color: var(--muted); font-size: 13px; }
+
+.image-preview { display: flex; gap: 12px; align-items: center; margin-top: 8px; padding: 8px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.image-preview img { max-width: 40%; max-height: 160px; border-radius: 6px; }
+
+.cards li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.cards .meta { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+.content { display: block; max-width: 100%; max-height: 50vh; overflow: auto; margin: 6px 0;
+  padding: 10px; border-radius: 8px; background: var(--bg); }
+pre.content { white-space: pre-wrap; word-break: break-word; font: 15px/1.5 ui-monospace, Menlo, monospace;
+  -webkit-user-select: text; user-select: text; }
+img.content { padding: 0; }
+
+.history li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0;
+  border-bottom: 1px solid var(--line); font-size: 14px; }
+.history .state { color: var(--muted); white-space: nowrap; }
+
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 8px 0; font-size: 14px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; min-width: 0; }
+
+dialog { width: min(600px, calc(100vw - 24px)); border: 1px solid var(--line); border-radius: 14px;
+  background: var(--panel); color: var(--fg); padding: 16px; }
+dialog::backdrop { background: rgb(0 0 0 / .4); }
+dialog pre.content { max-height: 40vh; }
+
+.toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px); transform: translateX(-50%);
+  background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 20px; font-size: 14px;
+  max-width: calc(100vw - 32px); z-index: 10; }

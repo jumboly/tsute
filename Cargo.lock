@@ -6169,8 +6169,24 @@ dependencies = [
  "tracing-subscriber",
  "tsute-proto",
  "tsute-server-core",
+ "tsute-webpush",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "tsute-webpush"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "p256",
+ "rand 0.8.8",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tsute-server-core",
+ "url",
 ]
 
 [[package]]
