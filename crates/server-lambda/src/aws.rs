@@ -17,7 +17,10 @@ fn n(v: i64) -> AttributeValue {
     AttributeValue::N(v.to_string())
 }
 fn get_s(i: &Item, k: &str) -> Result<String> {
-    i.get(k).and_then(|v| v.as_s().ok()).cloned().ok_or_else(|| format!("missing attr {k}").into())
+    i.get(k)
+        .and_then(|v| v.as_s().ok())
+        .cloned()
+        .ok_or_else(|| format!("missing attr {k}").into())
 }
 fn get_n(i: &Item, k: &str) -> Result<i64> {
     i.get(k)
@@ -26,7 +29,11 @@ fn get_n(i: &Item, k: &str) -> Result<i64> {
         .ok_or_else(|| format!("missing attr {k}").into())
 }
 fn state_str(st: TransferState) -> String {
-    serde_json::to_value(st).expect("state").as_str().expect("str").to_string()
+    serde_json::to_value(st)
+        .expect("state")
+        .as_str()
+        .expect("str")
+        .to_string()
 }
 
 pub struct DynamoStore {
@@ -42,7 +49,12 @@ impl DynamoStore {
     async fn put(&self, mut item: Item, pk: &str, sk: &str) -> Result<()> {
         item.insert("pk".into(), s(pk));
         item.insert("sk".into(), s(sk));
-        self.client.put_item().table_name(&self.table).set_item(Some(item)).send().await?;
+        self.client
+            .put_item()
+            .table_name(&self.table)
+            .set_item(Some(item))
+            .send()
+            .await?;
         Ok(())
     }
 
@@ -99,7 +111,12 @@ impl DynamoStore {
             .await;
         match r {
             Ok(o) => Ok(o.attributes),
-            Err(e) if e.as_service_error().is_some_and(|se| se.is_conditional_check_failed_exception()) => Ok(None),
+            Err(e)
+                if e.as_service_error()
+                    .is_some_and(|se| se.is_conditional_check_failed_exception()) =>
+            {
+                Ok(None)
+            }
             Err(e) => Err(e.into()),
         }
     }
@@ -114,13 +131,17 @@ impl DynamoStore {
 
 impl Store for DynamoStore {
     async fn put_enrollment_key(&self, h: &str, exp: i64) -> Result<()> {
-        self.put(HashMap::from([("ttl".into(), n(exp))]), &format!("EKEY#{h}"), "-").await
+        self.put(HashMap::from([("ttl".into(), n(exp))]), &format!("EKEY#{h}"), "-")
+            .await
     }
     async fn consume_enrollment_key(&self, h: &str, now: i64) -> Result<bool> {
         Ok(self.consume(&format!("EKEY#{h}"), now).await?.is_some())
     }
     async fn put_endpoint(&self, ep: &EndpointRecord) -> Result<()> {
-        let platform = serde_json::to_value(ep.platform)?.as_str().unwrap_or("other").to_string();
+        let platform = serde_json::to_value(ep.platform)?
+            .as_str()
+            .unwrap_or("other")
+            .to_string();
         self.put(
             HashMap::from([
                 ("endpoint_id".into(), s(&ep.endpoint_id)),
@@ -135,10 +156,17 @@ impl Store for DynamoStore {
         .await
     }
     async fn get_endpoint(&self, id: &str) -> Result<Option<EndpointRecord>> {
-        self.get("ENDPOINTS", &format!("EP#{id}")).await?.map(|i| endpoint_from(&i)).transpose()
+        self.get("ENDPOINTS", &format!("EP#{id}"))
+            .await?
+            .map(|i| endpoint_from(&i))
+            .transpose()
     }
     async fn list_endpoints(&self) -> Result<Vec<EndpointRecord>> {
-        self.query("ENDPOINTS", Some("EP#")).await?.iter().map(endpoint_from).collect()
+        self.query("ENDPOINTS", Some("EP#"))
+            .await?
+            .iter()
+            .map(endpoint_from)
+            .collect()
     }
     async fn delete_endpoint(&self, id: &str) -> Result<()> {
         self.client
@@ -150,8 +178,12 @@ impl Store for DynamoStore {
         Ok(())
     }
     async fn put_challenge(&self, nonce: &str, ep: &str, exp: i64) -> Result<()> {
-        self.put(HashMap::from([("endpoint_id".into(), s(ep)), ("ttl".into(), n(exp))]), &format!("CHAL#{nonce}"), "-")
-            .await
+        self.put(
+            HashMap::from([("endpoint_id".into(), s(ep)), ("ttl".into(), n(exp))]),
+            &format!("CHAL#{nonce}"),
+            "-",
+        )
+        .await
     }
     async fn consume_challenge(&self, nonce: &str, ep: &str, now: i64) -> Result<bool> {
         // endpoint_id も条件に含め、他 Endpoint 宛の nonce を消費できないようにする
@@ -168,13 +200,22 @@ impl Store for DynamoStore {
             .await;
         match r {
             Ok(_) => Ok(true),
-            Err(e) if e.as_service_error().is_some_and(|se| se.is_conditional_check_failed_exception()) => Ok(false),
+            Err(e)
+                if e.as_service_error()
+                    .is_some_and(|se| se.is_conditional_check_failed_exception()) =>
+            {
+                Ok(false)
+            }
             Err(e) => Err(e.into()),
         }
     }
     async fn put_token(&self, h: &str, ep: &str, exp: i64) -> Result<()> {
-        self.put(HashMap::from([("endpoint_id".into(), s(ep)), ("ttl".into(), n(exp))]), &format!("TOKEN#{h}"), "-")
-            .await
+        self.put(
+            HashMap::from([("endpoint_id".into(), s(ep)), ("ttl".into(), n(exp))]),
+            &format!("TOKEN#{h}"),
+            "-",
+        )
+        .await
     }
     async fn get_token(&self, h: &str, now: i64) -> Result<Option<String>> {
         match self.get(&format!("TOKEN#{h}"), "-").await? {
@@ -239,7 +280,9 @@ impl Store for DynamoStore {
         .await
     }
     async fn get_transfer(&self, id: &str) -> Result<Option<Transfer>> {
-        let Some(item) = self.get("TRANSFERS", &format!("T#{id}")).await? else { return Ok(None) };
+        let Some(item) = self.get("TRANSFERS", &format!("T#{id}")).await? else {
+            return Ok(None);
+        };
         let mut t = Self::transfer_from(&item)?;
         for f in self.query(&format!("XFER#{id}"), Some("F#")).await? {
             let idx: usize = get_s(&f, "sk")?.trim_start_matches("F#").parse()?;
@@ -278,7 +321,12 @@ impl Store for DynamoStore {
         req = req.condition_expression(format!("attribute_exists(pk) AND #s IN ({})", conds.join(",")));
         match req.send().await {
             Ok(_) => Ok(true),
-            Err(e) if e.as_service_error().is_some_and(|se| se.is_conditional_check_failed_exception()) => Ok(false),
+            Err(e)
+                if e.as_service_error()
+                    .is_some_and(|se| se.is_conditional_check_failed_exception()) =>
+            {
+                Ok(false)
+            }
             Err(e) => Err(e.into()),
         }
     }
@@ -353,7 +401,10 @@ impl BlobStore for S3Blob {
             .filter(|(k, _)| !k.eq_ignore_ascii_case("host") && !k.eq_ignore_ascii_case("content-length"))
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        Ok(PresignedPut { url: req.uri().to_string(), headers })
+        Ok(PresignedPut {
+            url: req.uri().to_string(),
+            headers,
+        })
     }
     async fn presign_get(&self, key: &str, ttl: u64) -> Result<String> {
         let req = self
@@ -401,7 +452,12 @@ impl BlobStore for S3Blob {
                 self.client
                     .delete_objects()
                     .bucket(&self.bucket)
-                    .delete(aws_sdk_s3::types::Delete::builder().set_objects(Some(ids)).quiet(true).build()?)
+                    .delete(
+                        aws_sdk_s3::types::Delete::builder()
+                            .set_objects(Some(ids))
+                            .quiet(true)
+                            .build()?,
+                    )
                     .send()
                     .await?;
             }

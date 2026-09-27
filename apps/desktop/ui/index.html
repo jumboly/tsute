@@ -1,1 +1,100 @@
-<!doctype html><html><body><h1>つて PoC</h1></body></html>
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>つて</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="me">
+      <span id="conn-dot" class="dot offline" title="offline"></span>
+      <strong id="me-name">つて</strong>
+      <span id="profile-badge" class="badge" hidden></span>
+    </div>
+    <nav>
+      <button id="nav-settings" class="icon-btn" title="設定" data-testid="nav-settings">⚙︎</button>
+    </nav>
+  </header>
+
+  <div id="insecure-banner" class="banner warn" hidden>
+    開発用のファイル資格情報ストアを使用中（INSECURE）
+  </div>
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- 登録 -->
+  <section id="view-enroll" class="view" hidden>
+    <h2>このプロファイルを登録</h2>
+    <p class="muted">管理者（AWS IAM）が発行した一回限りの Enrollment Key を入力してください。キーは発行から 10 分で失効します。</p>
+    <label>接続先 URL<input id="enroll-url" type="url" placeholder="https://example.com" data-testid="enroll-url" autocomplete="off"></label>
+    <label>Enrollment Key<input id="enroll-key" type="text" placeholder="tsute-ek-…" data-testid="enroll-key" autocomplete="off" spellcheck="false"></label>
+    <label>このEndpointの名前<input id="enroll-name" type="text" maxlength="64" data-testid="enroll-name"></label>
+    <button id="enroll-submit" class="primary" data-testid="enroll-submit">登録</button>
+    <p id="enroll-error" class="error" data-testid="enroll-error"></p>
+  </section>
+
+  <!-- メイン -->
+  <section id="view-main" class="view" hidden>
+    <label class="target">送信先
+      <select id="target" data-testid="target"></select>
+    </label>
+    <div class="actions">
+      <button id="send-clipboard" class="primary big" data-testid="send-clipboard">Clipboard を送る…</button>
+    </div>
+    <div id="dropzone" class="dropzone" data-testid="dropzone">
+      ここにファイルをドロップ<br><span class="muted">ドロップしただけでは送信しません</span>
+    </div>
+    <h3>履歴</h3>
+    <ul id="history" class="history" data-testid="history"></ul>
+  </section>
+
+  <!-- Clipboard プレビュー / 確認 -->
+  <section id="view-clip" class="view" hidden>
+    <h2>Clipboard の内容を確認</h2>
+    <div id="clip-tabs" class="tabs" data-testid="clip-tabs"></div>
+    <div id="clip-preview" class="preview" data-testid="clip-preview"></div>
+    <p class="to">送信先: <strong id="clip-target" data-testid="clip-target"></strong></p>
+    <div class="row">
+      <button id="clip-cancel" data-testid="clip-cancel">キャンセル</button>
+      <button id="clip-send" class="primary" data-testid="clip-send">送信</button>
+    </div>
+  </section>
+
+  <!-- ファイル確認 -->
+  <section id="view-files" class="view" hidden>
+    <h2>ファイルを送信しますか？</h2>
+    <p><span id="files-count" data-testid="files-count"></span> ファイル・合計 <strong id="files-total" data-testid="files-total"></strong></p>
+    <ul id="files-list" class="files" data-testid="files-list"></ul>
+    <ul id="files-rejected" class="files rejected"></ul>
+    <p class="to">送信先: <strong id="files-target" data-testid="files-target"></strong></p>
+    <div class="row">
+      <button id="files-cancel" data-testid="files-cancel">キャンセル</button>
+      <button id="files-send" class="primary" data-testid="files-send">送信</button>
+    </div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="view-settings" class="view" hidden>
+    <h2>設定</h2>
+    <dl class="kv">
+      <dt>プロファイル</dt><dd id="set-profile"></dd>
+      <dt>Endpoint ID</dt><dd id="set-endpoint" class="mono"></dd>
+      <dt>接続先</dt><dd id="set-url" class="mono"></dd>
+      <dt>資格情報</dt><dd id="set-cred"></dd>
+      <dt>受信フォルダ</dt><dd><span id="set-dl" class="mono"></span> <button id="set-dl-change" class="small">変更…</button></dd>
+      <dt>ログイン時に起動</dt><dd><label class="inline"><input type="checkbox" id="set-login" data-testid="set-login"> <span id="set-login-status" class="muted"></span></label></dd>
+      <dt>バージョン</dt><dd id="set-version"></dd>
+    </dl>
+    <label>このEndpointの名前<span class="row"><input id="set-name" type="text" maxlength="64"><button id="set-name-save" class="small">保存</button></span></label>
+    <h3>Endpoint 一覧</h3>
+    <ul id="endpoints" class="endpoints" data-testid="endpoints"></ul>
+    <div class="row">
+      <button id="settings-back" data-testid="settings-back">戻る</button>
+      <button id="forget" class="danger small">このMacの登録情報を削除</button>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

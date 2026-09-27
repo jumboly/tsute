@@ -1,0 +1,54 @@
+name: Deploy backend
+
+# Blog は別リポジトリ・別ワークフロー。ここではアプリの Backend / Edge だけを扱う。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/proto/**"
+      - "crates/server-core/**"
+      - "crates/server-lambda/**"
+      - "infra/**"
+      - "Cargo.lock"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target GitHub Environment
+        type: choice
+        options: [test, production]
+        default: test
+
+permissions:
+  contents: read
+  id-token: write # GitHub OIDC → AWS STS（長期アクセスキーを使わない）
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'test' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Environment ごとに Variables（AWS_REGION, AWS_DEPLOY_ROLE_ARN, TSUTE_APP_DOMAIN 等）と承認ルールを持たせる
+    environment: ${{ inputs.environment || 'test' }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TSUTE_APP_DOMAIN: ${{ vars.TSUTE_APP_DOMAIN }}
+      TSUTE_CERT_ARN: ${{ vars.TSUTE_CERT_ARN }}
+      TSUTE_GITHUB_BLOG_REPO: ${{ vars.TSUTE_GITHUB_BLOG_REPO }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v6
+      - run: uv tool install cargo-lambda
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - run: infra/deploy.sh "${{ inputs.environment || 'test' }}"
+      - name: Smoke test
+        run: |
+          URL="$(jq -r .app_base_url infra/.build/${{ inputs.environment || 'test' }}.json)"
+          curl -fsS "$URL/api/health"

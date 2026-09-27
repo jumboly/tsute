@@ -64,6 +64,19 @@ pub struct HistoryItem {
     pub updated_at: i64,
 }
 
+/// 転送に含まれる 1 ファイルのローカル情報
+#[derive(Debug, Clone)]
+pub struct FileRow {
+    /// 送信: 送信元パス / 受信: 最終的な保存先パス
+    pub path: PathBuf,
+    /// 送信: 開始時の mtime(ns)
+    pub mtime_ns: Option<i64>,
+    /// 受信: 書き込み中の part ファイル
+    pub part: Option<PathBuf>,
+    /// 受信: 検証・確定済み
+    pub done: bool,
+}
+
 pub struct Db {
     conn: Mutex<Connection>,
 }
@@ -136,12 +149,21 @@ impl Db {
     pub fn status(&self, id: &str) -> Result<Option<LocalStatus>, Error> {
         Ok(self
             .c()
-            .query_row("SELECT status FROM transfers WHERE transfer_id=?1", [id], |r| r.get::<_, String>(0))
+            .query_row("SELECT status FROM transfers WHERE transfer_id=?1", [id], |r| {
+                r.get::<_, String>(0)
+            })
             .optional()?
             .map(|s| LocalStatus::parse(&s)))
     }
 
-    pub fn set_file(&self, id: &str, file: u32, path: &Path, mtime_ns: Option<i64>, part: Option<&Path>) -> Result<(), Error> {
+    pub fn set_file(
+        &self,
+        id: &str,
+        file: u32,
+        path: &Path,
+        mtime_ns: Option<i64>,
+        part: Option<&Path>,
+    ) -> Result<(), Error> {
         self.c().execute(
             "INSERT OR REPLACE INTO transfer_files(transfer_id, file_idx, path, mtime_ns, part_path, done) VALUES (?1,?2,?3,?4,?5,0)",
             params![id, file, path.to_string_lossy(), mtime_ns, part.map(|p| p.to_string_lossy().to_string())],
@@ -149,44 +171,54 @@ impl Db {
         Ok(())
     }
 
-    /// (path, mtime_ns, part_path, done)
-    pub fn files(&self, id: &str) -> Result<Vec<(PathBuf, Option<i64>, Option<PathBuf>, bool)>, Error> {
+    pub fn files(&self, id: &str) -> Result<Vec<FileRow>, Error> {
         let c = self.c();
-        let mut st =
-            c.prepare("SELECT path, mtime_ns, part_path, done FROM transfer_files WHERE transfer_id=?1 ORDER BY file_idx")?;
+        let mut st = c.prepare(
+            "SELECT path, mtime_ns, part_path, done FROM transfer_files WHERE transfer_id=?1 ORDER BY file_idx",
+        )?;
         let rows = st
             .query_map([id], |r| {
-                Ok((
-                    PathBuf::from(r.get::<_, String>(0)?),
-                    r.get::<_, Option<i64>>(1)?,
-                    r.get::<_, Option<String>>(2)?.map(PathBuf::from),
-                    r.get::<_, i64>(3)? != 0,
-                ))
+                Ok(FileRow {
+                    path: PathBuf::from(r.get::<_, String>(0)?),
+                    mtime_ns: r.get::<_, Option<i64>>(1)?,
+                    part: r.get::<_, Option<String>>(2)?.map(PathBuf::from),
+                    done: r.get::<_, i64>(3)? != 0,
+                })
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
     pub fn mark_file_done(&self, id: &str, file: u32) -> Result<(), Error> {
-        self.c()
-            .execute("UPDATE transfer_files SET done=1 WHERE transfer_id=?1 AND file_idx=?2", params![id, file])?;
+        self.c().execute(
+            "UPDATE transfer_files SET done=1 WHERE transfer_id=?1 AND file_idx=?2",
+            params![id, file],
+        )?;
         Ok(())
     }
 
     pub fn mark_chunk(&self, id: &str, file: u32, idx: u32) -> Result<(), Error> {
-        self.c().execute("INSERT OR IGNORE INTO incoming_chunks VALUES (?1,?2,?3)", params![id, file, idx])?;
+        self.c().execute(
+            "INSERT OR IGNORE INTO incoming_chunks VALUES (?1,?2,?3)",
+            params![id, file, idx],
+        )?;
         Ok(())
     }
 
     pub fn clear_chunks(&self, id: &str, file: u32) -> Result<(), Error> {
-        self.c().execute("DELETE FROM incoming_chunks WHERE transfer_id=?1 AND file_idx=?2", params![id, file])?;
+        self.c().execute(
+            "DELETE FROM incoming_chunks WHERE transfer_id=?1 AND file_idx=?2",
+            params![id, file],
+        )?;
         Ok(())
     }
 
     pub fn chunks(&self, id: &str) -> Result<Vec<(u32, u32)>, Error> {
         let c = self.c();
         let mut st = c.prepare("SELECT file_idx, chunk_idx FROM incoming_chunks WHERE transfer_id=?1")?;
-        let rows = st.query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+        let rows = st
+            .query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
@@ -195,7 +227,9 @@ impl Db {
         let c = self.c();
         let mut st = c.prepare("SELECT json FROM transfers WHERE direction=?1 AND status IN ('active','uploaded')")?;
         let rows = st
-            .query_map([if dir == Direction::Outgoing { "out" } else { "in" }], |r| r.get::<_, String>(0))?
+            .query_map([if dir == Direction::Outgoing { "out" } else { "in" }], |r| {
+                r.get::<_, String>(0)
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows.into_iter().filter_map(|j| serde_json::from_str(&j).ok()).collect())
     }
@@ -206,18 +240,26 @@ impl Db {
             let mut st = c.prepare(
                 "SELECT transfer_id, direction, status, error, json, updated_at FROM transfers ORDER BY created_at DESC LIMIT ?1",
             )?;
-            st.query_map([limit], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?
-                .collect::<Result<Vec<_>, _>>()?
+            st.query_map([limit], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?
         };
         let mut out = Vec::new();
         for (id, dir, status, error, json, updated_at) in rows {
-            let Ok(transfer) = serde_json::from_str(&json) else { continue };
+            let Ok(transfer) = serde_json::from_str(&json) else {
+                continue;
+            };
             out.push(HistoryItem {
                 transfer,
-                direction: if dir == "out" { Direction::Outgoing } else { Direction::Incoming },
+                direction: if dir == "out" {
+                    Direction::Outgoing
+                } else {
+                    Direction::Incoming
+                },
                 status: LocalStatus::parse(&status),
                 error,
-                paths: self.files(&id)?.into_iter().map(|f| f.0).collect(),
+                paths: self.files(&id)?.into_iter().map(|f| f.path).collect(),
                 updated_at,
             });
         }

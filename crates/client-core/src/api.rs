@@ -33,7 +33,10 @@ pub fn http_client() -> reqwest::Client {
 }
 
 pub(crate) fn now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("clock").as_secs() as i64
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs() as i64
 }
 
 async fn read_json<T: DeserializeOwned>(resp: reqwest::Response) -> Result<T, Error> {
@@ -46,7 +49,9 @@ async fn read_json<T: DeserializeOwned>(resp: reqwest::Response) -> Result<T, Er
     Err(Error::Api {
         status: status.as_u16(),
         code: err.as_ref().map(|e| e.error.clone()).unwrap_or_default(),
-        message: err.map(|e| e.message).unwrap_or_else(|| String::from_utf8_lossy(&body).chars().take(200).collect()),
+        message: err
+            .map(|e| e.message)
+            .unwrap_or_else(|| String::from_utf8_lossy(&body).chars().take(200).collect()),
     })
 }
 
@@ -64,7 +69,11 @@ pub async fn enroll(base_url: &str, key: &SigningKey, enrollment_key: &str, name
         },
         public_key: URL_SAFE_NO_PAD.encode(key.verifying_key().as_bytes()),
     };
-    let resp = http_client().post(format!("{base_url}/api/enroll")).json(&req).send().await?;
+    let resp = http_client()
+        .post(format!("{base_url}/api/enroll"))
+        .json(&req)
+        .send()
+        .await?;
     Ok(read_json::<EnrollResponse>(resp).await?.endpoint_id)
 }
 
@@ -90,7 +99,9 @@ impl Api {
         let ch: ChallengeResponse = read_json(
             self.http
                 .post(format!("{}/api/auth/challenge", self.base_url))
-                .json(&ChallengeRequest { endpoint_id: self.endpoint_id.clone() })
+                .json(&ChallengeRequest {
+                    endpoint_id: self.endpoint_id.clone(),
+                })
                 .send()
                 .await?,
         )
@@ -116,11 +127,19 @@ impl Api {
         *self.token.lock().await = None;
     }
 
-    async fn call<B: Serialize, T: DeserializeOwned>(&self, method: reqwest::Method, path: &str, body: Option<&B>) -> Result<T, Error> {
+    async fn call<B: Serialize, T: DeserializeOwned>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&B>,
+    ) -> Result<T, Error> {
         // 401 はトークン失効（サーバー側の期限・revoke）の可能性があるので 1 回だけ取り直す
         for attempt in 0..2 {
             let tok = self.token().await?;
-            let mut rb = self.http.request(method.clone(), format!("{}{path}", self.base_url)).bearer_auth(tok);
+            let mut rb = self
+                .http
+                .request(method.clone(), format!("{}{path}", self.base_url))
+                .bearer_auth(tok);
             if let Some(b) = body {
                 rb = rb.json(b);
             }
@@ -136,31 +155,54 @@ impl Api {
         self.call::<(), _>(reqwest::Method::GET, "/api/me", None).await
     }
     pub async fn rename(&self, name: &str) -> Result<MeResponse, Error> {
-        self.call(reqwest::Method::PUT, "/api/me/name", Some(&RenameRequest { name: name.into() })).await
+        self.call(
+            reqwest::Method::PUT,
+            "/api/me/name",
+            Some(&RenameRequest { name: name.into() }),
+        )
+        .await
     }
     pub async fn endpoints(&self) -> Result<Vec<EndpointInfo>, Error> {
-        Ok(self.call::<(), EndpointList>(reqwest::Method::GET, "/api/endpoints", None).await?.endpoints)
+        Ok(self
+            .call::<(), EndpointList>(reqwest::Method::GET, "/api/endpoints", None)
+            .await?
+            .endpoints)
     }
     pub async fn create_transfer(&self, r: &CreateTransferRequest) -> Result<Transfer, Error> {
         self.call(reqwest::Method::POST, "/api/transfers", Some(r)).await
     }
     pub async fn transfers(&self) -> Result<Vec<Transfer>, Error> {
-        Ok(self.call::<(), TransferList>(reqwest::Method::GET, "/api/transfers", None).await?.transfers)
+        Ok(self
+            .call::<(), TransferList>(reqwest::Method::GET, "/api/transfers", None)
+            .await?
+            .transfers)
     }
     pub async fn transfer(&self, id: &str) -> Result<TransferDetail, Error> {
-        self.call::<(), _>(reqwest::Method::GET, &format!("/api/transfers/{id}"), None).await
+        self.call::<(), _>(reqwest::Method::GET, &format!("/api/transfers/{id}"), None)
+            .await
     }
     pub async fn cancel(&self, id: &str) -> Result<serde_json::Value, Error> {
-        self.call::<(), _>(reqwest::Method::DELETE, &format!("/api/transfers/{id}"), None).await
+        self.call::<(), _>(reqwest::Method::DELETE, &format!("/api/transfers/{id}"), None)
+            .await
     }
     pub async fn upload_urls(&self, id: &str, chunks: Vec<ChunkInfo>) -> Result<Vec<PresignedUrl>, Error> {
-        let r: PresignedUrls =
-            self.call(reqwest::Method::POST, &format!("/api/transfers/{id}/upload-urls"), Some(&UploadUrlRequest { chunks })).await?;
+        let r: PresignedUrls = self
+            .call(
+                reqwest::Method::POST,
+                &format!("/api/transfers/{id}/upload-urls"),
+                Some(&UploadUrlRequest { chunks }),
+            )
+            .await?;
         Ok(r.urls)
     }
     pub async fn chunks_complete(&self, id: &str, chunks: Vec<ChunkInfo>) -> Result<(), Error> {
-        let _: serde_json::Value =
-            self.call(reqwest::Method::POST, &format!("/api/transfers/{id}/chunks"), Some(&ChunkCompleteRequest { chunks })).await?;
+        let _: serde_json::Value = self
+            .call(
+                reqwest::Method::POST,
+                &format!("/api/transfers/{id}/chunks"),
+                Some(&ChunkCompleteRequest { chunks }),
+            )
+            .await?;
         Ok(())
     }
     pub async fn finalize(&self, id: &str, file: u32, sha256: &str) -> Result<Transfer, Error> {
@@ -172,12 +214,19 @@ impl Api {
         .await
     }
     pub async fn download_urls(&self, id: &str, chunks: Vec<ChunkRef>) -> Result<Vec<PresignedUrl>, Error> {
-        let r: PresignedUrls =
-            self.call(reqwest::Method::POST, &format!("/api/transfers/{id}/download-urls"), Some(&DownloadUrlRequest { chunks })).await?;
+        let r: PresignedUrls = self
+            .call(
+                reqwest::Method::POST,
+                &format!("/api/transfers/{id}/download-urls"),
+                Some(&DownloadUrlRequest { chunks }),
+            )
+            .await?;
         Ok(r.urls)
     }
     pub async fn received(&self, id: &str) -> Result<(), Error> {
-        let _: serde_json::Value = self.call::<(), _>(reqwest::Method::POST, &format!("/api/transfers/{id}/received"), None).await?;
+        let _: serde_json::Value = self
+            .call::<(), _>(reqwest::Method::POST, &format!("/api/transfers/{id}/received"), None)
+            .await?;
         Ok(())
     }
 
@@ -200,7 +249,10 @@ impl Api {
     pub async fn get_blob(&self, url: &str) -> Result<Vec<u8>, Error> {
         let resp = self.http.get(url).send().await?;
         if !resp.status().is_success() {
-            return Err(Error::Blob { status: resp.status().as_u16(), message: String::new() });
+            return Err(Error::Blob {
+                status: resp.status().as_u16(),
+                message: String::new(),
+            });
         }
         Ok(resp.bytes().await?.to_vec())
     }

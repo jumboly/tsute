@@ -49,11 +49,17 @@ pub trait Store: Send + Sync {
     fn list_endpoints(&self) -> impl Future<Output = Result<Vec<EndpointRecord>>> + Send;
     fn delete_endpoint(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
 
-    fn put_challenge(&self, nonce: &str, endpoint_id: &str, expires_at: i64) -> impl Future<Output = Result<()>> + Send;
+    fn put_challenge(&self, nonce: &str, endpoint_id: &str, expires_at: i64)
+    -> impl Future<Output = Result<()>> + Send;
     /// 未失効かつ endpoint が一致すれば削除して true（リプレイ防止）
     fn consume_challenge(&self, nonce: &str, endpoint_id: &str, now: i64) -> impl Future<Output = Result<bool>> + Send;
 
-    fn put_token(&self, token_hash: &str, endpoint_id: &str, expires_at: i64) -> impl Future<Output = Result<()>> + Send;
+    fn put_token(
+        &self,
+        token_hash: &str,
+        endpoint_id: &str,
+        expires_at: i64,
+    ) -> impl Future<Output = Result<()>> + Send;
     fn get_token(&self, token_hash: &str, now: i64) -> impl Future<Output = Result<Option<String>>> + Send;
     fn delete_tokens_of(&self, endpoint_id: &str) -> impl Future<Output = Result<()>> + Send;
 
@@ -66,8 +72,19 @@ pub trait Store: Send + Sync {
     fn get_transfer(&self, id: &str) -> impl Future<Output = Result<Option<Transfer>>> + Send;
     fn list_transfers(&self, now: i64) -> impl Future<Output = Result<Vec<Transfer>>> + Send;
     /// state が `from` のいずれかであるときだけ `to` に遷移。遷移したら true。
-    fn transition(&self, id: &str, from: &[TransferState], to: TransferState) -> impl Future<Output = Result<bool>> + Send;
-    fn put_file_sha(&self, id: &str, file: u32, sha256: &str, expires_at: i64) -> impl Future<Output = Result<()>> + Send;
+    fn transition(
+        &self,
+        id: &str,
+        from: &[TransferState],
+        to: TransferState,
+    ) -> impl Future<Output = Result<bool>> + Send;
+    fn put_file_sha(
+        &self,
+        id: &str,
+        file: u32,
+        sha256: &str,
+        expires_at: i64,
+    ) -> impl Future<Output = Result<()>> + Send;
     fn put_chunk(&self, id: &str, c: &ChunkInfo, expires_at: i64) -> impl Future<Output = Result<()>> + Send;
     fn list_chunks(&self, id: &str) -> impl Future<Output = Result<Vec<ChunkInfo>>> + Send;
 }
@@ -80,7 +97,13 @@ pub struct PresignedPut {
 pub trait BlobStore: Send + Sync {
     /// サイズと SHA-256 を署名に含めた PUT URL。Object Storage 側で内容検証させ、
     /// 壊れたデータが「完了済みチャンク」として残らないようにする。
-    fn presign_put(&self, key: &str, size: u64, sha256_b64: &str, expires_in_secs: u64) -> impl Future<Output = Result<PresignedPut>> + Send;
+    fn presign_put(
+        &self,
+        key: &str,
+        size: u64,
+        sha256_b64: &str,
+        expires_in_secs: u64,
+    ) -> impl Future<Output = Result<PresignedPut>> + Send;
     fn presign_get(&self, key: &str, expires_in_secs: u64) -> impl Future<Output = Result<String>> + Send;
     /// 存在すれば (size, sha256_b64)
     fn head(&self, key: &str) -> impl Future<Output = Result<Option<(u64, Option<String>)>>> + Send;

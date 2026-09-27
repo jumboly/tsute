@@ -34,11 +34,16 @@ pub fn valid_profile_name(name: &str) -> bool {
 impl Profile {
     pub fn new(app_data_dir: &Path, name: &str) -> Result<Self, Error> {
         if !valid_profile_name(name) {
-            return Err(Error::Other(format!("invalid profile name {name:?} (use [A-Za-z0-9_-], max 32)")));
+            return Err(Error::Other(format!(
+                "invalid profile name {name:?} (use [A-Za-z0-9_-], max 32)"
+            )));
         }
         let root = app_data_dir.join("profiles").join(name);
         std::fs::create_dir_all(&root)?;
-        Ok(Self { name: name.into(), root })
+        Ok(Self {
+            name: name.into(),
+            root,
+        })
     }
 
     pub fn config_path(&self) -> PathBuf {
@@ -58,7 +63,9 @@ impl Profile {
 
     pub fn load_config(&self) -> Result<Option<ProfileConfig>, Error> {
         match std::fs::read(self.config_path()) {
-            Ok(b) => Ok(Some(serde_json::from_slice(&b).map_err(|e| Error::Other(format!("profile.json: {e}")))?)),
+            Ok(b) => Ok(Some(
+                serde_json::from_slice(&b).map_err(|e| Error::Other(format!("profile.json: {e}")))?,
+            )),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
@@ -80,16 +87,27 @@ impl Profile {
 
     pub fn load_key(&self, secrets: &dyn SecretStore, c: &ProfileConfig) -> Result<SigningKey, Error> {
         let mut raw = secrets.get(&self.secret_account(c))?.ok_or(Error::NotEnrolled)?;
-        let arr: [u8; 32] = raw.as_slice().try_into().map_err(|_| Error::Secret("stored key has wrong length".into()))?;
+        let arr: [u8; 32] = raw
+            .as_slice()
+            .try_into()
+            .map_err(|_| Error::Secret("stored key has wrong length".into()))?;
         raw.zeroize();
         Ok(SigningKey::from_bytes(&arr))
     }
 
     pub fn default_download_dir(&self) -> PathBuf {
-        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from);
-        let base = home.map(|h| h.join("Downloads")).unwrap_or_else(|| self.root.join("downloads"));
+        let home = std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(PathBuf::from);
+        let base = home
+            .map(|h| h.join("Downloads"))
+            .unwrap_or_else(|| self.root.join("downloads"));
         // 既定プロファイル以外はサブフォルダを分け、同一マシンでのテスト時に受信物が混ざらないようにする
-        if self.name == "default" { base.join("Tsute") } else { base.join(format!("Tsute-{}", self.name)) }
+        if self.name == "default" {
+            base.join("Tsute")
+        } else {
+            base.join(format!("Tsute-{}", self.name))
+        }
     }
 
     /// 新規登録。鍵を生成してサーバーに公開鍵を登録し、秘密鍵を Credential Storage に保存する。
@@ -103,7 +121,12 @@ impl Profile {
         let base_url = base_url.trim().trim_end_matches('/').to_string();
         let key = SigningKey::generate(&mut rand::rngs::OsRng);
         let endpoint_id = crate::api::enroll(&base_url, &key, enrollment_key, endpoint_name).await?;
-        let cfg = ProfileConfig { base_url, endpoint_id, name: endpoint_name.into(), download_dir: None };
+        let cfg = ProfileConfig {
+            base_url,
+            endpoint_id,
+            name: endpoint_name.into(),
+            download_dir: None,
+        };
         secrets.set(&self.secret_account(&cfg), key.as_bytes())?;
         self.save_config(&cfg)?;
         Ok(cfg)

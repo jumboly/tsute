@@ -11,6 +11,14 @@ path = "src/main.rs"
 tauri-build = { version = "2.5", features = [] }
 
 [dependencies]
+tsute-proto = { path = "../../crates/proto" }
+tsute-client-core = { path = "../../crates/client-core" }
+tsute-os = { path = "../../crates/os" }
 tauri = { version = "2.12", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["sync", "net", "io-util", "time", "macros"] }
+base64 = "0.22"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

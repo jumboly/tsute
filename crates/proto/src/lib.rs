@@ -294,12 +294,26 @@ pub struct ApiError {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerEvent {
-    Hello { endpoint_id: String, connection_id: String },
-    Presence { endpoint_id: String, online: bool },
+    Hello {
+        endpoint_id: String,
+        connection_id: String,
+    },
+    Presence {
+        endpoint_id: String,
+        online: bool,
+    },
     EndpointsChanged,
-    TransferCreated { transfer: Box<Transfer> },
-    ChunksReady { transfer_id: String, chunks: Vec<ChunkInfo> },
-    TransferState { transfer_id: String, state: TransferState },
+    TransferCreated {
+        transfer: Box<Transfer>,
+    },
+    ChunksReady {
+        transfer_id: String,
+        chunks: Vec<ChunkInfo>,
+    },
+    TransferState {
+        transfer_id: String,
+        state: TransferState,
+    },
     Pong,
 }
 
@@ -345,11 +359,17 @@ mod tests {
 
     #[test]
     fn event_json_shape() {
-        let e = ServerEvent::Presence { endpoint_id: "e".into(), online: true };
+        let e = ServerEvent::Presence {
+            endpoint_id: "e".into(),
+            online: true,
+        };
         assert_eq!(
             serde_json::to_string(&e).unwrap(),
             r#"{"type":"presence","endpoint_id":"e","online":true}"#
         );
-        assert_eq!(serde_json::to_string(&ClientMessage::Ping).unwrap(), r#"{"action":"ping"}"#);
+        assert_eq!(
+            serde_json::to_string(&ClientMessage::Ping).unwrap(),
+            r#"{"action":"ping"}"#
+        );
     }
 }

@@ -101,8 +101,13 @@ impl Store for MemoryStore {
         }))
     }
     async fn list_transfers(&self, now: i64) -> Result<Vec<Transfer>> {
-        let ids: Vec<String> =
-            self.with(|i| i.transfers.values().filter(|t| t.expires_at > now).map(|t| t.transfer_id.clone()).collect());
+        let ids: Vec<String> = self.with(|i| {
+            i.transfers
+                .values()
+                .filter(|t| t.expires_at > now)
+                .map(|t| t.transfer_id.clone())
+                .collect()
+        });
         let mut out = Vec::new();
         for id in ids {
             if let Some(t) = self.get_transfer(&id).await? {
@@ -129,7 +134,13 @@ impl Store for MemoryStore {
         Ok(())
     }
     async fn list_chunks(&self, id: &str) -> Result<Vec<ChunkInfo>> {
-        Ok(self.with(|i| i.chunks.iter().filter(|((t, _, _), _)| t == id).map(|(_, c)| c.clone()).collect()))
+        Ok(self.with(|i| {
+            i.chunks
+                .iter()
+                .filter(|((t, _, _), _)| t == id)
+                .map(|(_, c)| c.clone())
+                .collect()
+        }))
     }
 }
 

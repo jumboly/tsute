@@ -1,0 +1,35 @@
+name: Desktop build
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/**", "crates/**", "Cargo.lock", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [test, production]
+        default: test
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    environment: ${{ inputs.environment || 'test' }}
+    env:
+      # 接続先はソースに書かず、Environment の Variables からビルド時に注入する
+      TSUTE_DEFAULT_BASE_URL: ${{ vars.APP_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install tauri-cli --version "^2" --locked
+      - run: cd apps/desktop && cargo tauri build --bundles app
+      # 現状は ad-hoc 署名（Developer ID 未設定）。配布時は署名・公証を追加する（docs/PROGRESS.md 参照）
+      - run: cd target/release/bundle/macos && ditto -c -k --keepParent Tsute.app Tsute-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tsute-macos
+          path: target/release/bundle/macos/Tsute-macos.zip

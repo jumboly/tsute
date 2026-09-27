@@ -57,7 +57,10 @@ pub struct Response {
 
 impl Response {
     fn json<T: Serialize>(status: u16, v: &T) -> Self {
-        Self { status, body: serde_json::to_vec(v).expect("serialize") }
+        Self {
+            status,
+            body: serde_json::to_vec(v).expect("serialize"),
+        }
     }
 }
 
@@ -70,7 +73,11 @@ pub struct ApiErr {
 
 impl ApiErr {
     fn new(status: u16, code: &'static str, message: impl Into<String>) -> Self {
-        Self { status, code, message: message.into() }
+        Self {
+            status,
+            code,
+            message: message.into(),
+        }
     }
     fn bad(m: impl Into<String>) -> Self {
         Self::new(400, "bad_request", m)
@@ -132,8 +139,14 @@ fn validate_file_name(name: &str) -> ApiResult<()> {
         || name.len() > 255
         || name == "."
         || name == ".."
-        || name.chars().any(|c| c == '/' || c == '\\' || c == '\0' || c.is_control());
-    if bad { Err(ApiErr::bad(format!("invalid file name: {name:?}"))) } else { Ok(()) }
+        || name
+            .chars()
+            .any(|c| c == '/' || c == '\\' || c == '\0' || c.is_control());
+    if bad {
+        Err(ApiErr::bad(format!("invalid file name: {name:?}")))
+    } else {
+        Ok(())
+    }
 }
 
 fn validate_endpoint_name(name: &str) -> ApiResult<String> {
@@ -153,7 +166,12 @@ pub struct Core<S, B, N> {
 
 impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
     pub fn new(store: S, blob: B, notifier: N, cfg: Config) -> Self {
-        Self { store, blob, notifier, cfg }
+        Self {
+            store,
+            blob,
+            notifier,
+            cfg,
+        }
     }
 
     // ---------- 管理操作（IAM で保護された経路からのみ呼ぶ） ----------
@@ -185,7 +203,13 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
                 if e.status >= 500 {
                     tracing::warn!(status = e.status, code = e.code, path = %req.path, "request failed");
                 }
-                Response::json(e.status, &tsute_proto::ApiError { error: e.code.into(), message: e.message })
+                Response::json(
+                    e.status,
+                    &tsute_proto::ApiError {
+                        error: e.code.into(),
+                        message: e.message,
+                    },
+                )
             }
         }
     }
@@ -195,7 +219,10 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         let seg: Vec<&str> = path.trim_matches('/').split('/').collect();
         let m = req.method.as_str();
         match (m, seg.as_slice()) {
-            ("GET", ["api", "health"]) => Ok(Response::json(200, &serde_json::json!({"ok": true, "protocol_version": PROTOCOL_VERSION}))),
+            ("GET", ["api", "health"]) => Ok(Response::json(
+                200,
+                &serde_json::json!({"ok": true, "protocol_version": PROTOCOL_VERSION}),
+            )),
             ("POST", ["api", "enroll"]) => self.enroll(parse(&req.body)?).await,
             ("POST", ["api", "auth", "challenge"]) => self.challenge(parse(&req.body)?).await,
             ("POST", ["api", "auth", "token"]) => self.token(parse(&req.body)?).await,
@@ -204,9 +231,12 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
                 match (m, seg.as_slice()) {
                     ("GET", ["api", "me"]) => self.me(&me).await,
                     ("PUT", ["api", "me", "name"]) => self.rename(&me, parse(&req.body)?).await,
-                    ("GET", ["api", "endpoints"]) => {
-                        Ok(Response::json(200, &EndpointList { endpoints: self.endpoint_infos().await? }))
-                    }
+                    ("GET", ["api", "endpoints"]) => Ok(Response::json(
+                        200,
+                        &EndpointList {
+                            endpoints: self.endpoint_infos().await?,
+                        },
+                    )),
                     ("POST", ["api", "transfers"]) => self.create_transfer(&me, parse(&req.body)?).await,
                     ("GET", ["api", "transfers"]) => self.list_transfers(&me).await,
                     ("GET", ["api", "transfers", id]) => {
@@ -214,13 +244,19 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
                         Ok(Response::json(200, &TransferDetail { transfer: t, chunks }))
                     }
                     ("DELETE", ["api", "transfers", id]) => self.cancel(&me, id).await,
-                    ("POST", ["api", "transfers", id, "upload-urls"]) => self.upload_urls(&me, id, parse(&req.body)?).await,
-                    ("POST", ["api", "transfers", id, "chunks"]) => self.chunks_complete(&me, id, parse(&req.body)?).await,
+                    ("POST", ["api", "transfers", id, "upload-urls"]) => {
+                        self.upload_urls(&me, id, parse(&req.body)?).await
+                    }
+                    ("POST", ["api", "transfers", id, "chunks"]) => {
+                        self.chunks_complete(&me, id, parse(&req.body)?).await
+                    }
                     ("POST", ["api", "transfers", id, "files", file, "finalize"]) => {
                         let file: u32 = file.parse().map_err(|_| ApiErr::bad("file index"))?;
                         self.finalize_file(&me, id, file, parse(&req.body)?).await
                     }
-                    ("POST", ["api", "transfers", id, "download-urls"]) => self.download_urls(&me, id, parse(&req.body)?).await,
+                    ("POST", ["api", "transfers", id, "download-urls"]) => {
+                        self.download_urls(&me, id, parse(&req.body)?).await
+                    }
                     ("POST", ["api", "transfers", id, "received"]) => self.received(&me, id).await,
                     _ => Err(ApiErr::not_found()),
                 }
@@ -236,7 +272,11 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         if !token.starts_with(TOKEN_PREFIX) {
             return Err(ApiErr::unauthorized());
         }
-        let ep = self.store.get_token(&secret_hash(token), now()).await?.ok_or_else(ApiErr::unauthorized)?;
+        let ep = self
+            .store
+            .get_token(&secret_hash(token), now())
+            .await?
+            .ok_or_else(ApiErr::unauthorized)?;
         // 失効（revoke）された Endpoint のトークンは即座に無効にする
         if self.store.get_endpoint(&ep).await?.is_none() {
             return Err(ApiErr::unauthorized());
@@ -246,14 +286,23 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
 
     async fn enroll(&self, r: EnrollRequest) -> ApiResult<Response> {
         let name = validate_endpoint_name(&r.name)?;
-        let pk = URL_SAFE_NO_PAD.decode(&r.public_key).map_err(|_| ApiErr::bad("public_key encoding"))?;
+        let pk = URL_SAFE_NO_PAD
+            .decode(&r.public_key)
+            .map_err(|_| ApiErr::bad("public_key encoding"))?;
         let pk: [u8; 32] = pk.try_into().map_err(|_| ApiErr::bad("public_key length"))?;
         VerifyingKey::from_bytes(&pk).map_err(|_| ApiErr::bad("public_key invalid"))?;
         if !r.enrollment_key.starts_with(ENROLLMENT_KEY_PREFIX)
-            || !self.store.consume_enrollment_key(&secret_hash(&r.enrollment_key), now()).await?
+            || !self
+                .store
+                .consume_enrollment_key(&secret_hash(&r.enrollment_key), now())
+                .await?
         {
             // 鍵の存在有無を区別できる情報は返さない
-            return Err(ApiErr::new(403, "invalid_enrollment_key", "enrollment key is invalid, used, or expired"));
+            return Err(ApiErr::new(
+                403,
+                "invalid_enrollment_key",
+                "enrollment key is invalid, used, or expired",
+            ));
         }
         let ep = EndpointRecord {
             endpoint_id: format!("ep_{}", uuid::Uuid::now_v7().simple()),
@@ -265,7 +314,12 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         self.store.put_endpoint(&ep).await?;
         tracing::info!(endpoint_id = %ep.endpoint_id, "endpoint enrolled");
         self.broadcast(None, &ServerEvent::EndpointsChanged).await;
-        Ok(Response::json(200, &EnrollResponse { endpoint_id: ep.endpoint_id }))
+        Ok(Response::json(
+            200,
+            &EnrollResponse {
+                endpoint_id: ep.endpoint_id,
+            },
+        ))
     }
 
     async fn challenge(&self, r: ChallengeRequest) -> ApiResult<Response> {
@@ -292,8 +346,11 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
             .ok()
             .and_then(|v| v.try_into().ok())
             .ok_or_else(fail)?;
-        vk.verify(&auth_signing_message(&r.endpoint_id, &r.nonce), &Signature::from_bytes(&sig))
-            .map_err(|_| fail())?;
+        vk.verify(
+            &auth_signing_message(&r.endpoint_id, &r.nonce),
+            &Signature::from_bytes(&sig),
+        )
+        .map_err(|_| fail())?;
         // 署名検証後に消費する: 検証前に消すと第三者が他人の nonce を無効化できてしまう
         if !self.store.consume_challenge(&r.nonce, &r.endpoint_id, now()).await? {
             return Err(fail());
@@ -301,7 +358,13 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         let token = random_token(TOKEN_PREFIX, 32);
         let exp = now() + self.cfg.token_ttl_secs;
         self.store.put_token(&secret_hash(&token), &r.endpoint_id, exp).await?;
-        Ok(Response::json(200, &TokenResponse { access_token: token, expires_at: exp }))
+        Ok(Response::json(
+            200,
+            &TokenResponse {
+                access_token: token,
+                expires_at: exp,
+            },
+        ))
     }
 
     async fn endpoint_infos(&self) -> Result<Vec<EndpointInfo>> {
@@ -316,8 +379,17 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
 
     async fn me(&self, me: &str) -> ApiResult<Response> {
         let infos = self.endpoint_infos().await?;
-        let endpoint = infos.into_iter().find(|e| e.endpoint_id == me).ok_or_else(ApiErr::unauthorized)?;
-        Ok(Response::json(200, &MeResponse { endpoint, protocol_version: PROTOCOL_VERSION }))
+        let endpoint = infos
+            .into_iter()
+            .find(|e| e.endpoint_id == me)
+            .ok_or_else(ApiErr::unauthorized)?;
+        Ok(Response::json(
+            200,
+            &MeResponse {
+                endpoint,
+                protocol_version: PROTOCOL_VERSION,
+            },
+        ))
     }
 
     async fn rename(&self, me: &str, r: RenameRequest) -> ApiResult<Response> {
@@ -388,7 +460,11 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
             receiver: r.receiver,
             kind: r.kind,
             // inline テキストはアップロードすべきデータがないので即 Uploaded
-            state: if inline { TransferState::Uploaded } else { TransferState::Uploading },
+            state: if inline {
+                TransferState::Uploaded
+            } else {
+                TransferState::Uploading
+            },
             created_at: created,
             expires_at: created + self.cfg.transfer_ttl_secs,
             chunk_size,
@@ -397,7 +473,13 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         };
         self.store.put_transfer(&t).await?;
         tracing::info!(transfer_id = %t.transfer_id, kind = ?t.kind, bytes = t.total_bytes(), "transfer created");
-        self.notify_endpoint(&t.receiver, &ServerEvent::TransferCreated { transfer: Box::new(t.clone()) }).await;
+        self.notify_endpoint(
+            &t.receiver,
+            &ServerEvent::TransferCreated {
+                transfer: Box::new(t.clone()),
+            },
+        )
+        .await;
         Ok(Response::json(200, &t))
     }
 
@@ -424,7 +506,10 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
     }
 
     fn check_chunk(t: &Transfer, file: u32, index: u32) -> ApiResult<()> {
-        let f = t.files.get(file as usize).ok_or_else(|| ApiErr::bad("file index out of range"))?;
+        let f = t
+            .files
+            .get(file as usize)
+            .ok_or_else(|| ApiErr::bad("file index out of range"))?;
         if index >= f.chunk_count {
             return Err(ApiErr::bad("chunk index out of range"));
         }
@@ -451,9 +536,20 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
             }
             let p = self
                 .blob
-                .presign_put(&blob_key(id, c.file, c.index), c.size, &c.sha256, self.cfg.presign_ttl_secs)
+                .presign_put(
+                    &blob_key(id, c.file, c.index),
+                    c.size,
+                    &c.sha256,
+                    self.cfg.presign_ttl_secs,
+                )
                 .await?;
-            urls.push(PresignedUrl { file: c.file, index: c.index, url: p.url, headers: p.headers, expires_at: exp });
+            urls.push(PresignedUrl {
+                file: c.file,
+                index: c.index,
+                url: p.url,
+                headers: p.headers,
+                expires_at: exp,
+            });
         }
         Ok(Response::json(200, &PresignedUrls { urls }))
     }
@@ -475,13 +571,24 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
                     self.store.put_chunk(id, c, t.expires_at).await?;
                     done.push(c.clone());
                 }
-                _ => return Err(ApiErr::conflict(format!("chunk {}/{} not uploaded or mismatched", c.file, c.index))),
+                _ => {
+                    return Err(ApiErr::conflict(format!(
+                        "chunk {}/{} not uploaded or mismatched",
+                        c.file, c.index
+                    )));
+                }
             }
         }
         // WebSocket フレーム上限(32KB)を超えないよう分割して通知する
         for part in done.chunks(100) {
-            self.notify_endpoint(&t.receiver, &ServerEvent::ChunksReady { transfer_id: id.into(), chunks: part.to_vec() })
-                .await;
+            self.notify_endpoint(
+                &t.receiver,
+                &ServerEvent::ChunksReady {
+                    transfer_id: id.into(),
+                    chunks: part.to_vec(),
+                },
+            )
+            .await;
         }
         Ok(Response::json(200, &serde_json::json!({"ok": true})))
     }
@@ -491,7 +598,10 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         if t.sender != me {
             return Err(ApiErr::not_found());
         }
-        let f = t.files.get(file as usize).ok_or_else(|| ApiErr::bad("file index out of range"))?;
+        let f = t
+            .files
+            .get(file as usize)
+            .ok_or_else(|| ApiErr::bad("file index out of range"))?;
         let have = chunks.iter().filter(|c| c.file == file).count() as u32;
         if have != f.chunk_count {
             return Err(ApiErr::conflict("not all chunks uploaded"));
@@ -502,9 +612,15 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         self.store.put_file_sha(id, file, &r.sha256, t.expires_at).await?;
         let t = self.store.get_transfer(id).await?.ok_or_else(ApiErr::not_found)?;
         if t.files.iter().all(|f| f.sha256.is_some())
-            && self.store.transition(id, &[TransferState::Uploading], TransferState::Uploaded).await?
+            && self
+                .store
+                .transition(id, &[TransferState::Uploading], TransferState::Uploaded)
+                .await?
         {
-            let ev = ServerEvent::TransferState { transfer_id: id.into(), state: TransferState::Uploaded };
+            let ev = ServerEvent::TransferState {
+                transfer_id: id.into(),
+                state: TransferState::Uploaded,
+            };
             self.notify_endpoint(&t.receiver, &ev).await;
             self.notify_endpoint(&t.sender, &ev).await;
         }
@@ -528,8 +644,17 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
             if !chunks.iter().any(|x| x.file == c.file && x.index == c.index) {
                 return Err(ApiErr::conflict("chunk not ready"));
             }
-            let url = self.blob.presign_get(&blob_key(id, c.file, c.index), self.cfg.presign_ttl_secs).await?;
-            urls.push(PresignedUrl { file: c.file, index: c.index, url, headers: vec![], expires_at: exp });
+            let url = self
+                .blob
+                .presign_get(&blob_key(id, c.file, c.index), self.cfg.presign_ttl_secs)
+                .await?;
+            urls.push(PresignedUrl {
+                file: c.file,
+                index: c.index,
+                url,
+                headers: vec![],
+                expires_at: exp,
+            });
         }
         Ok(Response::json(200, &PresignedUrls { urls }))
     }
@@ -542,11 +667,18 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         if t.state == TransferState::Received {
             return Ok(Response::json(200, &serde_json::json!({"ok": true})));
         }
-        if !self.store.transition(id, &[TransferState::Uploaded], TransferState::Received).await? {
+        if !self
+            .store
+            .transition(id, &[TransferState::Uploaded], TransferState::Received)
+            .await?
+        {
             return Err(ApiErr::conflict("transfer is not fully uploaded"));
         }
         self.blob.delete_prefix(&blob_prefix(id)).await?;
-        let ev = ServerEvent::TransferState { transfer_id: id.into(), state: TransferState::Received };
+        let ev = ServerEvent::TransferState {
+            transfer_id: id.into(),
+            state: TransferState::Received,
+        };
         self.notify_endpoint(&t.sender, &ev).await;
         self.notify_endpoint(&t.receiver, &ev).await;
         Ok(Response::json(200, &serde_json::json!({"ok": true})))
@@ -556,11 +688,18 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
         let (t, _) = self.load_for(me, id).await?;
         let ok = self
             .store
-            .transition(id, &[TransferState::Uploading, TransferState::Uploaded], TransferState::Cancelled)
+            .transition(
+                id,
+                &[TransferState::Uploading, TransferState::Uploaded],
+                TransferState::Cancelled,
+            )
             .await?;
         if ok {
             self.blob.delete_prefix(&blob_prefix(id)).await?;
-            let ev = ServerEvent::TransferState { transfer_id: id.into(), state: TransferState::Cancelled };
+            let ev = ServerEvent::TransferState {
+                transfer_id: id.into(),
+                state: TransferState::Cancelled,
+            };
             self.notify_endpoint(&t.sender, &ev).await;
             self.notify_endpoint(&t.receiver, &ev).await;
         }
@@ -570,7 +709,11 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
     // ---------- WebSocket ----------
 
     /// $connect。Err を返すと接続を拒否する。
-    pub async fn ws_connect(&self, connection_id: &str, headers: &HashMap<String, String>) -> std::result::Result<String, ApiErr> {
+    pub async fn ws_connect(
+        &self,
+        connection_id: &str,
+        headers: &HashMap<String, String>,
+    ) -> std::result::Result<String, ApiErr> {
         let ep = self.authenticate(headers).await?;
         self.store
             .put_connection(&ConnectionRecord {
@@ -581,15 +724,34 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
             })
             .await?;
         tracing::info!(endpoint_id = %ep, "ws connected");
-        self.broadcast(Some(connection_id), &ServerEvent::Presence { endpoint_id: ep.clone(), online: true }).await;
+        self.broadcast(
+            Some(connection_id),
+            &ServerEvent::Presence {
+                endpoint_id: ep.clone(),
+                online: true,
+            },
+        )
+        .await;
         Ok(ep)
     }
 
     pub async fn ws_disconnect(&self, connection_id: &str) -> Result<()> {
         if let Some(ep) = self.store.delete_connection(connection_id).await? {
-            let still_online = self.store.list_connections(now()).await?.iter().any(|c| c.endpoint_id == ep);
+            let still_online = self
+                .store
+                .list_connections(now())
+                .await?
+                .iter()
+                .any(|c| c.endpoint_id == ep);
             if !still_online {
-                self.broadcast(None, &ServerEvent::Presence { endpoint_id: ep, online: false }).await;
+                self.broadcast(
+                    None,
+                    &ServerEvent::Presence {
+                        endpoint_id: ep,
+                        online: false,
+                    },
+                )
+                .await;
             }
         }
         Ok(())
@@ -605,7 +767,10 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
                 {
                     let _ = self
                         .store
-                        .put_connection(&ConnectionRecord { expires_at: now() + self.cfg.connection_ttl_secs, ..c })
+                        .put_connection(&ConnectionRecord {
+                            expires_at: now() + self.cfg.connection_ttl_secs,
+                            ..c
+                        })
                         .await;
                 }
                 Some(ServerEvent::Pong)
@@ -615,7 +780,10 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
     }
 
     pub async fn hello_event(&self, connection_id: &str, endpoint_id: &str) -> ServerEvent {
-        ServerEvent::Hello { endpoint_id: endpoint_id.into(), connection_id: connection_id.into() }
+        ServerEvent::Hello {
+            endpoint_id: endpoint_id.into(),
+            connection_id: connection_id.into(),
+        }
     }
 
     async fn send_or_prune(&self, c: &ConnectionRecord, ev: &ServerEvent) {
@@ -632,14 +800,18 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
     }
 
     async fn notify_endpoint(&self, endpoint_id: &str, ev: &ServerEvent) {
-        let Ok(conns) = self.store.list_connections(now()).await else { return };
+        let Ok(conns) = self.store.list_connections(now()).await else {
+            return;
+        };
         for c in conns.iter().filter(|c| c.endpoint_id == endpoint_id) {
             self.send_or_prune(c, ev).await;
         }
     }
 
     async fn broadcast(&self, except: Option<&str>, ev: &ServerEvent) {
-        let Ok(conns) = self.store.list_connections(now()).await else { return };
+        let Ok(conns) = self.store.list_connections(now()).await else {
+            return;
+        };
         for c in conns.iter().filter(|c| Some(c.connection_id.as_str()) != except) {
             self.send_or_prune(c, ev).await;
         }

@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # デスクトップ（Tauri/AppKit）を含むワークスペース全体をビルドするため macOS で実行する
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # 実 Clipboard を上書きするテストは #[ignore]（CI ランナーでは GUI セッションが保証されないため）
+      - run: cargo test --workspace
+
+  infra-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uvx cfn-lint infra/cloudformation/*.yaml
+
+  lambda-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v6
+      - run: uv tool install cargo-lambda
+      - run: |
+          export PATH="$(dirname "$(find ~/.local/share/uv/tools/cargo-lambda -name zig -type f | head -1)"):$PATH"
+          cargo lambda build --release --arm64 -p tsute-server-lambda --output-format zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lambda-bootstrap
+          path: target/lambda/tsute-lambda/bootstrap.zip

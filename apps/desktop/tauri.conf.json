@@ -4,9 +4,17 @@
   "identifier": "dev.tsute.desktop",
   "build": { "frontendDist": "ui" },
   "app": {
+    "withGlobalTauri": true,
     "windows": [],
-    "security": { "csp": "default-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'" },
-    "macOSPrivateApi": false
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
   },
-  "bundle": { "active": true, "targets": ["app"], "icon": ["icons/icon.png"], "macOS": { "minimumSystemVersion": "13.0" } }
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": ["icons/icon.png"],
+    "category": "Utility",
+    "macOS": { "minimumSystemVersion": "13.0" }
+  }
 }

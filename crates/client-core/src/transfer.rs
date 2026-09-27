@@ -22,12 +22,12 @@ use sha2::{Digest, Sha256};
 use tokio::sync::{Notify, Semaphore, broadcast, mpsc, watch};
 use tsute_proto::*;
 
+use crate::Error;
 use crate::api::Api;
-use crate::db::{Db, Direction, HistoryItem, LocalStatus};
+use crate::db::{Db, Direction, FileRow, HistoryItem, LocalStatus};
 use crate::profile::{Profile, ProfileConfig};
 use crate::secrets::SecretStore;
 use crate::ws::{self, ConnState, WsSignal};
-use crate::Error;
 
 /// 同時転送数。根拠は ADR-0004（家庭/オフィス回線で帯域を使い切りつつメモリを 8MiB×4 程度に抑える）
 pub const UPLOAD_CONCURRENCY: usize = 4;
@@ -40,16 +40,32 @@ const RETRY_FAILED_TRANSFER_AFTER: Duration = Duration::from_secs(30);
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientEvent {
-    Connection { state: ConnState },
+    Connection {
+        state: ConnState,
+    },
     EndpointsChanged,
-    Progress { transfer_id: String, direction: Direction, done_bytes: u64, total_bytes: u64 },
+    Progress {
+        transfer_id: String,
+        direction: Direction,
+        done_bytes: u64,
+        total_bytes: u64,
+    },
     /// 履歴（状態）が変わった
-    TransferUpdated { transfer_id: String },
+    TransferUpdated {
+        transfer_id: String,
+    },
     /// 受信が完了し、ユーザーが Clipboard 反映/保存できる状態になった
-    IncomingReady { transfer_id: String },
+    IncomingReady {
+        transfer_id: String,
+    },
     /// 送信した転送を相手が受け取った
-    Delivered { transfer_id: String },
-    TransferFailed { transfer_id: String, message: String },
+    Delivered {
+        transfer_id: String,
+    },
+    TransferFailed {
+        transfer_id: String,
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -86,7 +102,11 @@ fn io_err(m: impl Into<String>) -> Error {
 }
 
 fn mtime_ns(meta: &std::fs::Metadata) -> Option<i64> {
-    meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_nanos() as i64)
+    meta.modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_nanos() as i64)
 }
 
 fn read_at(path: &Path, offset: u64, len: u64) -> std::io::Result<Vec<u8>> {
@@ -99,7 +119,10 @@ fn read_at(path: &Path, offset: u64, len: u64) -> std::io::Result<Vec<u8>> {
         #[cfg(windows)]
         let n = std::os::windows::fs::FileExt::seek_read(&f, &mut buf[done..], offset + done as u64)?;
         if n == 0 {
-            return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "file shrank during transfer"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "file shrank during transfer",
+            ));
         }
         done += n;
     }
@@ -149,7 +172,10 @@ pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
         Some(i) if i > 0 => (&name[..i], &name[i..]),
         _ => (name, ""),
     };
-    (1..).map(|n| dir.join(format!("{stem} ({n}){ext}"))).find(|p| !p.exists()).expect("unique")
+    (1..)
+        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
+        .find(|p| !p.exists())
+        .expect("unique")
 }
 
 pub fn guess_mime(name: &str) -> String {
@@ -249,7 +275,9 @@ impl Client {
     }
 
     pub fn download_dir(&self) -> PathBuf {
-        self.config().download_dir.unwrap_or_else(|| self.inner.profile.default_download_dir())
+        self.config()
+            .download_dir
+            .unwrap_or_else(|| self.inner.profile.default_download_dir())
     }
 
     pub fn set_download_dir(&self, dir: Option<PathBuf>) -> Result<(), Error> {
@@ -376,7 +404,13 @@ impl Client {
     }
 
     fn waker(&self, id: &str) -> Arc<Notify> {
-        self.inner.wakers.lock().expect("lock").entry(id.into()).or_default().clone()
+        self.inner
+            .wakers
+            .lock()
+            .expect("lock")
+            .entry(id.into())
+            .or_default()
+            .clone()
     }
 
     /// サーバーと状態を突き合わせる（接続確立時・定期）
@@ -403,8 +437,13 @@ impl Client {
                     Some(r) => self.on_remote_state(&r.transfer_id, r.state),
                     // 一覧に無い = 期限切れ・削除済み
                     None => {
-                        let _ = self.inner.db.set_status(&t.transfer_id, LocalStatus::Failed, Some("expired on server"));
-                        self.emit(ClientEvent::TransferUpdated { transfer_id: t.transfer_id });
+                        let _ =
+                            self.inner
+                                .db
+                                .set_status(&t.transfer_id, LocalStatus::Failed, Some("expired on server"));
+                        self.emit(ClientEvent::TransferUpdated {
+                            transfer_id: t.transfer_id,
+                        });
                     }
                 }
             }
@@ -436,8 +475,17 @@ impl Client {
     }
 
     fn set_progress(&self, id: &str, dir: Direction, done: u64, total: u64) {
-        self.inner.progress.lock().expect("lock").insert(id.into(), (done, total));
-        self.emit(ClientEvent::Progress { transfer_id: id.into(), direction: dir, done_bytes: done, total_bytes: total });
+        self.inner
+            .progress
+            .lock()
+            .expect("lock")
+            .insert(id.into(), (done, total));
+        self.emit(ClientEvent::Progress {
+            transfer_id: id.into(),
+            direction: dir,
+            done_bytes: done,
+            total_bytes: total,
+        });
     }
 
     // ---------------- 送信 ----------------
@@ -456,9 +504,13 @@ impl Client {
                     chunk_size: None,
                 })
                 .await?;
-            self.inner.db.upsert_transfer(&t, Direction::Outgoing, LocalStatus::Uploaded)?;
+            self.inner
+                .db
+                .upsert_transfer(&t, Direction::Outgoing, LocalStatus::Uploaded)?;
             self.inner.db.set_status(&t.transfer_id, LocalStatus::Uploaded, None)?;
-            self.emit(ClientEvent::TransferUpdated { transfer_id: t.transfer_id.clone() });
+            self.emit(ClientEvent::TransferUpdated {
+                transfer_id: t.transfer_id.clone(),
+            });
             return Ok(t);
         }
         let dir = self.inner.profile.outbox_dir();
@@ -471,7 +523,8 @@ impl Client {
             mime: Some("text/plain; charset=utf-8".into()),
             media: MediaInfo::default(),
         };
-        self.send_files(receiver, TransferKind::ClipboardText, vec![f], None).await
+        self.send_files(receiver, TransferKind::ClipboardText, vec![f], None)
+            .await
     }
 
     /// ファイル群の転送を作成し、バックグラウンドでアップロードを開始する。
@@ -514,11 +567,17 @@ impl Client {
                 chunk_size,
             })
             .await?;
-        self.inner.db.upsert_transfer(&t, Direction::Outgoing, LocalStatus::Active)?;
+        self.inner
+            .db
+            .upsert_transfer(&t, Direction::Outgoing, LocalStatus::Active)?;
         for (i, (f, meta)) in files.iter().zip(&metas).enumerate() {
-            self.inner.db.set_file(&t.transfer_id, i as u32, &f.path, mtime_ns(meta), None)?;
+            self.inner
+                .db
+                .set_file(&t.transfer_id, i as u32, &f.path, mtime_ns(meta), None)?;
         }
-        self.emit(ClientEvent::TransferUpdated { transfer_id: t.transfer_id.clone() });
+        self.emit(ClientEvent::TransferUpdated {
+            transfer_id: t.transfer_id.clone(),
+        });
         self.spawn_upload(t.clone());
         Ok(t)
     }
@@ -551,7 +610,9 @@ impl Client {
                     // 通信断などは状態を Active のまま残し、少し後（または再接続時の sync）で再開する
                     tracing::info!(transfer_id = %id, error = %e, "upload interrupted; will retry");
                     let _ = me.inner.db.set_status(&id, LocalStatus::Active, Some(&e.to_string()));
-                    me.emit(ClientEvent::TransferUpdated { transfer_id: id.clone() });
+                    me.emit(ClientEvent::TransferUpdated {
+                        transfer_id: id.clone(),
+                    });
                     let me2 = me.clone();
                     tokio::spawn(async move {
                         tokio::time::sleep(RETRY_FAILED_TRANSFER_AFTER).await;
@@ -562,8 +623,13 @@ impl Client {
                 }
                 Err(e) => {
                     tracing::warn!(transfer_id = %id, error = %e, "upload failed");
+                    // 受信側が完了しない転送を待ち続けないよう、サーバー上の転送も取り消す（ベストエフォート）
+                    let _ = me.inner.api.cancel(&id).await;
                     let _ = me.inner.db.set_status(&id, LocalStatus::Failed, Some(&e.to_string()));
-                    me.emit(ClientEvent::TransferFailed { transfer_id: id.clone(), message: e.to_string() });
+                    me.emit(ClientEvent::TransferFailed {
+                        transfer_id: id.clone(),
+                        message: e.to_string(),
+                    });
                     me.emit(ClientEvent::TransferUpdated { transfer_id: id });
                 }
             }
@@ -578,10 +644,15 @@ impl Client {
             return Err(io_err("local transfer record is incomplete"));
         }
         // 再開時に元ファイルが変わっていたら、途中まで送ったデータと混ざるので中止する
-        for ((path, mtime, _, _), f) in files.iter().zip(&t.files) {
-            let meta = std::fs::metadata(path).map_err(|e| io_err(format!("source file unavailable {}: {e}", path.display())))?;
+        for (row, f) in files.iter().zip(&t.files) {
+            let (path, mtime) = (&row.path, &row.mtime_ns);
+            let meta = std::fs::metadata(path)
+                .map_err(|e| io_err(format!("source file unavailable {}: {e}", path.display())))?;
             if meta.len() != f.size || mtime_ns(&meta) != *mtime {
-                return Err(io_err(format!("source file changed since send started: {}", path.display())));
+                return Err(io_err(format!(
+                    "source file changed since send started: {}",
+                    path.display()
+                )));
             }
         }
         let detail = api.transfer(id).await?;
@@ -601,11 +672,16 @@ impl Client {
         let done_bytes = Arc::new(std::sync::atomic::AtomicU64::new(
             detail.chunks.iter().map(|c| c.size).sum(),
         ));
-        self.set_progress(id, Direction::Outgoing, done_bytes.load(std::sync::atomic::Ordering::Relaxed), total);
+        self.set_progress(
+            id,
+            Direction::Outgoing,
+            done_bytes.load(std::sync::atomic::Ordering::Relaxed),
+            total,
+        );
 
         // ファイル全体ハッシュはチャンク送信と並行して計算する（開始を遅らせないため）
         let mut hash_tasks = Vec::new();
-        for (i, (path, ..)) in files.iter().enumerate() {
+        for (i, FileRow { path, .. }) in files.iter().enumerate() {
             if detail.transfer.files[i].sha256.is_none() {
                 let p = path.clone();
                 hash_tasks.push((i as u32, tokio::task::spawn_blocking(move || sha256_file(&p))));
@@ -620,7 +696,7 @@ impl Client {
             .collect();
         let results: Vec<Result<(), Error>> = futures_util::stream::iter(jobs)
             .map(|(file, index)| {
-                let path = files[file as usize].0.clone();
+                let path = files[file as usize].path.clone();
                 let done_bytes = done_bytes.clone();
                 async move {
                     let _permit = self.inner.up_sem.acquire().await.expect("sem");
@@ -633,8 +709,17 @@ impl Client {
                             let data = tokio::task::spawn_blocking(move || read_at(&path, offset, len))
                                 .await
                                 .map_err(|e| io_err(e.to_string()))??;
-                            let info = ChunkInfo { file, index, size: len, sha256: sha256_b64(&data) };
-                            let url = api.upload_urls(id, vec![info.clone()]).await?.pop().ok_or_else(|| io_err("no url"))?;
+                            let info = ChunkInfo {
+                                file,
+                                index,
+                                size: len,
+                                sha256: sha256_b64(&data),
+                            };
+                            let url = api
+                                .upload_urls(id, vec![info.clone()])
+                                .await?
+                                .pop()
+                                .ok_or_else(|| io_err("no url"))?;
                             api.put_blob(&url, data).await?;
                             api.chunks_complete(id, vec![info]).await
                         }
@@ -687,7 +772,9 @@ impl Client {
                 Err(e) if e.is_transient() => {
                     tracing::info!(transfer_id = %id, error = %e, "download interrupted; will retry");
                     let _ = me.inner.db.set_status(&id, LocalStatus::Active, Some(&e.to_string()));
-                    me.emit(ClientEvent::TransferUpdated { transfer_id: id.clone() });
+                    me.emit(ClientEvent::TransferUpdated {
+                        transfer_id: id.clone(),
+                    });
                     let me2 = me.clone();
                     tokio::spawn(async move {
                         tokio::time::sleep(RETRY_FAILED_TRANSFER_AFTER).await;
@@ -699,7 +786,10 @@ impl Client {
                 Err(e) => {
                     tracing::warn!(transfer_id = %id, error = %e, "download failed");
                     let _ = me.inner.db.set_status(&id, LocalStatus::Failed, Some(&e.to_string()));
-                    me.emit(ClientEvent::TransferFailed { transfer_id: id.clone(), message: e.to_string() });
+                    me.emit(ClientEvent::TransferFailed {
+                        transfer_id: id.clone(),
+                        message: e.to_string(),
+                    });
                     me.emit(ClientEvent::TransferUpdated { transfer_id: id });
                 }
             }
@@ -725,13 +815,19 @@ impl Client {
         for f in &t.files {
             let final_path = unique_path(&dir, &f.name);
             let part = dir.join(format!(".{}.{short}.tsute-part", f.name));
-            let file = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&part)?;
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(false)
+                .open(&part)?;
             // 最終サイズで確保し、各チャンクを offset に直接書く
             file.set_len(f.size)?;
             db.set_file(&t.transfer_id, f.index, &final_path, None, Some(&part))?;
         }
         db.upsert_transfer(t, Direction::Incoming, LocalStatus::Active)?;
-        self.emit(ClientEvent::TransferUpdated { transfer_id: t.transfer_id.clone() });
+        self.emit(ClientEvent::TransferUpdated {
+            transfer_id: t.transfer_id.clone(),
+        });
         Ok(())
     }
 
@@ -749,14 +845,19 @@ impl Client {
             if db.status(&id)? != Some(LocalStatus::Done) {
                 api.received(&id).await?;
                 db.set_status(&id, LocalStatus::Done, None)?;
-                self.emit(ClientEvent::TransferUpdated { transfer_id: id.clone() });
+                self.emit(ClientEvent::TransferUpdated {
+                    transfer_id: id.clone(),
+                });
                 self.emit(ClientEvent::IncomingReady { transfer_id: id });
             }
             return Ok(());
         }
 
         self.prepare_incoming(&t)?;
-        if matches!(db.status(&id)?, Some(LocalStatus::Done | LocalStatus::Cancelled | LocalStatus::Failed)) {
+        if matches!(
+            db.status(&id)?,
+            Some(LocalStatus::Done | LocalStatus::Cancelled | LocalStatus::Failed)
+        ) {
             return Ok(());
         }
         let total = t.total_bytes();
@@ -767,15 +868,22 @@ impl Client {
             if t.state == TransferState::Cancelled {
                 self.discard_parts(&id);
                 db.set_status(&id, LocalStatus::Cancelled, None)?;
-                self.emit(ClientEvent::TransferUpdated { transfer_id: id.clone() });
+                self.emit(ClientEvent::TransferUpdated {
+                    transfer_id: id.clone(),
+                });
                 return Ok(());
             }
             let files = db.files(&id)?;
             // part ファイルが消されていたら（ユーザー操作等）そのファイルは最初から取り直す
-            for (i, (_, _, part, done)) in files.iter().enumerate() {
+            for (i, FileRow { part, done, .. }) in files.iter().enumerate() {
                 if !*done && part.as_ref().is_some_and(|p| !p.exists()) {
                     let p = part.clone().expect("part");
-                    std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&p)?.set_len(t.files[i].size)?;
+                    std::fs::OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .truncate(false)
+                        .open(&p)?
+                        .set_len(t.files[i].size)?;
                     db.clear_chunks(&id, i as u32)?;
                 }
             }
@@ -786,7 +894,7 @@ impl Client {
             let todo: Vec<ChunkInfo> = detail
                 .chunks
                 .iter()
-                .filter(|c| !local.contains(&(c.file, c.index)) && !files[c.file as usize].3)
+                .filter(|c| !local.contains(&(c.file, c.index)) && !files[c.file as usize].done)
                 .cloned()
                 .collect();
             if !todo.is_empty() {
@@ -796,7 +904,12 @@ impl Client {
             // 全チャンクが揃ったファイルを検証して確定する
             let mut all_done = true;
             for f in &t.files {
-                let (final_path, _, part, done) = &files[f.index as usize];
+                let FileRow {
+                    path: final_path,
+                    part,
+                    done,
+                    ..
+                } = &files[f.index as usize];
                 if *done {
                     continue;
                 }
@@ -807,7 +920,9 @@ impl Client {
                 };
                 let part = part.clone().ok_or_else(|| io_err("missing part path"))?;
                 let p2 = part.clone();
-                let actual = tokio::task::spawn_blocking(move || sha256_file(&p2)).await.map_err(|e| io_err(e.to_string()))??;
+                let actual = tokio::task::spawn_blocking(move || sha256_file(&p2))
+                    .await
+                    .map_err(|e| io_err(e.to_string()))??;
                 if &actual != sha {
                     let n = verify_failures.entry(f.index).or_default();
                     *n += 1;
@@ -839,8 +954,12 @@ impl Client {
                 api.received(&id).await?;
                 db.set_status(&id, LocalStatus::Done, None)?;
                 self.set_progress(&id, Direction::Incoming, total, total);
-                self.emit(ClientEvent::TransferUpdated { transfer_id: id.clone() });
-                self.emit(ClientEvent::IncomingReady { transfer_id: id.clone() });
+                self.emit(ClientEvent::TransferUpdated {
+                    transfer_id: id.clone(),
+                });
+                self.emit(ClientEvent::IncomingReady {
+                    transfer_id: id.clone(),
+                });
                 return Ok(());
             }
             // 送信側の次のチャンクを待つ（通知 or 保険のポーリング）
@@ -851,7 +970,7 @@ impl Client {
     async fn download_chunks(
         &self,
         t: &Transfer,
-        files: &[(PathBuf, Option<i64>, Option<PathBuf>, bool)],
+        files: &[FileRow],
         todo: Vec<ChunkInfo>,
         base_bytes: u64,
     ) -> Result<(), Error> {
@@ -860,12 +979,18 @@ impl Client {
         let total = t.total_bytes();
         let done_bytes = Arc::new(std::sync::atomic::AtomicU64::new(base_bytes));
         for batch in todo.chunks(32) {
-            let refs: Vec<ChunkRef> = batch.iter().map(|c| ChunkRef { file: c.file, index: c.index }).collect();
+            let refs: Vec<ChunkRef> = batch
+                .iter()
+                .map(|c| ChunkRef {
+                    file: c.file,
+                    index: c.index,
+                })
+                .collect();
             let urls = with_retry("download urls", || api.download_urls(id, refs.clone())).await?;
             let results: Vec<Result<(), Error>> = futures_util::stream::iter(batch.iter().cloned())
                 .map(|c| {
                     let url = urls.iter().find(|u| u.file == c.file && u.index == c.index).map(|u| u.url.clone());
-                    let part = files[c.file as usize].2.clone();
+                    let part = files[c.file as usize].part.clone();
                     let done_bytes = done_bytes.clone();
                     async move {
                         let _permit = self.inner.down_sem.acquire().await.expect("sem");
@@ -907,7 +1032,7 @@ impl Client {
 
     fn discard_parts(&self, id: &str) {
         if let Ok(files) = self.inner.db.files(id) {
-            for (_, _, part, done) in files {
+            for FileRow { part, done, .. } in files {
                 if let (Some(p), false) = (part, done) {
                     let _ = std::fs::remove_file(p);
                 }

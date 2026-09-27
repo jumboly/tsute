@@ -11,7 +11,9 @@ use std::process::Command;
 use tsute_os::*;
 
 fn fixture(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures")
+        .join(name)
 }
 
 struct Restore(Option<String>);
@@ -34,12 +36,23 @@ fn text_roundtrip_via_pbcopy() {
     let _r = Restore(read_text_for_test());
     let tmp = tempfile::tempdir().unwrap();
     // 他アプリからのコピーを模して pbcopy（別プロセス）で書く
-    let mut child = Command::new("pbcopy").stdin(std::process::Stdio::piped()).spawn().unwrap();
+    let mut child = Command::new("pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
     use std::io::Write;
-    child.stdin.as_mut().unwrap().write_all("つて test 🌏\n2行目".as_bytes()).unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all("つて test 🌏\n2行目".as_bytes())
+        .unwrap();
     child.wait().unwrap();
     let snap = read_clipboard(tmp.path()).unwrap();
-    assert!(matches!(&snap.candidates[0], ClipCandidate::Text { text } if text == "つて test 🌏\n2行目"), "{snap:?}");
+    assert!(
+        matches!(&snap.candidates[0], ClipCandidate::Text { text } if text == "つて test 🌏\n2行目"),
+        "{snap:?}"
+    );
 
     write_text("written by tsute").unwrap();
     let out = Command::new("pbpaste").output().unwrap();
@@ -56,7 +69,14 @@ fn png_image_roundtrip() {
     assert!(snap.types.iter().any(|t| t == "public.png"));
     assert!(snap.types.iter().any(|t| t == "public.tiff"));
     match &snap.candidates[0] {
-        ClipCandidate::Image { width, height, mime, path, temporary, .. } => {
+        ClipCandidate::Image {
+            width,
+            height,
+            mime,
+            path,
+            temporary,
+            ..
+        } => {
             assert_eq!((*width, *height), (Some(64), Some(48)));
             assert_eq!(mime, "image/png");
             assert!(*temporary && path.exists());
@@ -71,15 +91,30 @@ fn tiff_only_image_is_normalized_to_png() {
     let _r = Restore(read_text_for_test());
     let tmp = tempfile::tempdir().unwrap();
     let tiff = tmp.path().join("x.tiff");
-    let st = Command::new("sips").args(["-s", "format", "tiff"]).arg(fixture("image-64x48.png")).arg("--out").arg(&tiff)
-        .stdout(std::process::Stdio::null()).status().unwrap();
+    let st = Command::new("sips")
+        .args(["-s", "format", "tiff"])
+        .arg(fixture("image-64x48.png"))
+        .arg("--out")
+        .arg(&tiff)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .unwrap();
     assert!(st.success());
     // AppleScript で TIFF のみを Clipboard に載せる（PNG 表現なし）
-    osascript(&format!("set the clipboard to (read (POSIX file \"{}\") as TIFF picture)", tiff.display()));
+    osascript(&format!(
+        "set the clipboard to (read (POSIX file \"{}\") as TIFF picture)",
+        tiff.display()
+    ));
     let snap = read_clipboard(tmp.path()).unwrap();
     assert!(!snap.types.iter().any(|t| t == "public.png"), "{:?}", snap.types);
     match &snap.candidates[0] {
-        ClipCandidate::Image { width, height, source, path, .. } => {
+        ClipCandidate::Image {
+            width,
+            height,
+            source,
+            path,
+            ..
+        } => {
             assert_eq!((*width, *height), (Some(64), Some(48)));
             assert_eq!(source, "public.tiff");
             assert_eq!(png_dimensions(&std::fs::read(path).unwrap()), Some((64, 48)));
@@ -97,10 +132,21 @@ fn video_file_url_from_finder_style_copy() {
     osascript(&format!("set the clipboard to (POSIX file \"{}\")", mov.display()));
     let snap = read_clipboard(tmp.path()).unwrap();
     match &snap.candidates[0] {
-        ClipCandidate::Video { path, width, height, duration_ms, temporary, mime, .. } => {
+        ClipCandidate::Video {
+            path,
+            width,
+            height,
+            duration_ms,
+            temporary,
+            mime,
+            ..
+        } => {
             assert_eq!(path, &mov);
             assert_eq!((*width, *height), (Some(320), Some(240)));
-            assert!(duration_ms.unwrap() >= 1900 && duration_ms.unwrap() <= 2100, "{duration_ms:?}");
+            assert!(
+                duration_ms.unwrap() >= 1900 && duration_ms.unwrap() <= 2100,
+                "{duration_ms:?}"
+            );
             assert!(!temporary);
             assert_eq!(mime, "video/quicktime");
         }
@@ -117,7 +163,13 @@ fn video_raw_data_on_clipboard() {
     write_raw_for_test("com.apple.quicktime-movie", &bytes).unwrap();
     let snap = read_clipboard(tmp.path()).unwrap();
     match &snap.candidates[0] {
-        ClipCandidate::Video { path, size, width, temporary, .. } => {
+        ClipCandidate::Video {
+            path,
+            size,
+            width,
+            temporary,
+            ..
+        } => {
             assert_eq!(*size as usize, bytes.len());
             assert_eq!(std::fs::read(path).unwrap(), bytes);
             assert_eq!(*width, Some(320));
@@ -145,5 +197,9 @@ fn multiple_files_and_write_file_urls() {
         }
         c => panic!("unexpected {c:?}"),
     }
-    assert_eq!(snap.candidates.len(), 1, "file icon TIFF must not become an image candidate");
+    assert_eq!(
+        snap.candidates.len(),
+        1,
+        "file icon TIFF must not become an image candidate"
+    );
 }

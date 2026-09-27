@@ -35,7 +35,12 @@ pub enum WsSignal {
 }
 
 /// 停止要求（`stop` が true になる）まで接続を維持し続ける
-pub async fn run(api: Api, out: mpsc::UnboundedSender<WsSignal>, state: watch::Sender<ConnState>, mut stop: watch::Receiver<bool>) {
+pub async fn run(
+    api: Api,
+    out: mpsc::UnboundedSender<WsSignal>,
+    state: watch::Sender<ConnState>,
+    mut stop: watch::Receiver<bool>,
+) {
     let mut backoff = Duration::from_secs(1);
     loop {
         if *stop.borrow() {
@@ -68,10 +73,15 @@ async fn session(
     stop: &mut watch::Receiver<bool>,
 ) -> Result<(), crate::Error> {
     let token = api.token().await?;
-    let mut req = api.ws_url().into_client_request().map_err(|e| crate::Error::Protocol(e.to_string()))?;
+    let mut req = api
+        .ws_url()
+        .into_client_request()
+        .map_err(|e| crate::Error::Protocol(e.to_string()))?;
     req.headers_mut().insert(
         "authorization",
-        format!("Bearer {token}").parse().map_err(|_| crate::Error::Protocol("token header".into()))?,
+        format!("Bearer {token}")
+            .parse()
+            .map_err(|_| crate::Error::Protocol("token header".into()))?,
     );
     let (ws, _) = tokio::time::timeout(Duration::from_secs(20), tokio_tungstenite::connect_async(req))
         .await

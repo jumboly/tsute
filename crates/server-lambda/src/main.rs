@@ -26,11 +26,21 @@ fn env(k: &str) -> String {
 async fn init() -> AwsCore {
     let conf = aws_config::load_from_env().await;
     let ws_endpoint = env("WS_MANAGEMENT_ENDPOINT");
-    let mgmt_conf = aws_sdk_apigatewaymanagement::config::Builder::from(&conf).endpoint_url(ws_endpoint).build();
+    let mgmt_conf = aws_sdk_apigatewaymanagement::config::Builder::from(&conf)
+        .endpoint_url(ws_endpoint)
+        .build();
     Core::new(
-        aws::DynamoStore { client: aws_sdk_dynamodb::Client::new(&conf), table: env("TABLE_NAME") },
-        aws::S3Blob { client: aws_sdk_s3::Client::new(&conf), bucket: env("BUCKET_NAME") },
-        aws::ApiGwNotifier { client: aws_sdk_apigatewaymanagement::Client::from_conf(mgmt_conf) },
+        aws::DynamoStore {
+            client: aws_sdk_dynamodb::Client::new(&conf),
+            table: env("TABLE_NAME"),
+        },
+        aws::S3Blob {
+            client: aws_sdk_s3::Client::new(&conf),
+            bucket: env("BUCKET_NAME"),
+        },
+        aws::ApiGwNotifier {
+            client: aws_sdk_apigatewaymanagement::Client::from_conf(mgmt_conf),
+        },
         Config::default(),
     )
 }
@@ -78,7 +88,14 @@ async fn handle_api(core: &AwsCore, ev: Value) -> Result<Value, Error> {
         (Some(b), _) => b.as_bytes().to_vec(),
         (None, _) => vec![],
     };
-    let r = core.handle_http(Request { method, path, headers: lower_headers(&ev), body }).await;
+    let r = core
+        .handle_http(Request {
+            method,
+            path,
+            headers: lower_headers(&ev),
+            body,
+        })
+        .await;
     Ok(json!({
         "statusCode": r.status,
         "headers": {"content-type": "application/json", "cache-control": "no-store"},

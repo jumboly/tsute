@@ -10,14 +10,26 @@ async fn main() -> std::io::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
     let args: Vec<String> = std::env::args().collect();
-    let arg = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned());
-    let bind = arg("--bind").unwrap_or_else(|| "127.0.0.1:8787".into()).parse().expect("bind addr");
+    let arg = |name: &str| {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1).cloned())
+    };
+    let bind = arg("--bind")
+        .unwrap_or_else(|| "127.0.0.1:8787".into())
+        .parse()
+        .expect("bind addr");
     let dir = PathBuf::from(arg("--data-dir").unwrap_or_else(|| "target/devserver".into()));
     std::fs::create_dir_all(&dir)?;
     let token = uuid::Uuid::new_v4().simple().to_string();
     std::fs::write(dir.join("admin-token"), &token)?;
     let s = tsute_server_local::start(bind, dir.join("blobs"), token, Default::default()).await?;
+    if let Some(ms) = arg("--blob-delay-ms").and_then(|v| v.parse().ok()) {
+        s.state.blob_delay_ms.store(ms, std::sync::atomic::Ordering::SeqCst);
+    }
     tracing::info!(base_url = %s.base_url, "devserver listening");
+    // テストスクリプトが確実に拾えるよう、ログ整形とは独立した機械可読な 1 行を出す
+    println!("TSUTE_DEVSERVER_URL={}", s.base_url);
     s.handle.await.ok();
     Ok(())
 }

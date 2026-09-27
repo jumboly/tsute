@@ -64,7 +64,10 @@ impl BlobStore for FsBlobStore {
         let sig = self.sign("PUT", key, exp, &format!("{size}\n{sha}"));
         let url = format!("{}/blob/{key}?exp={exp}&size={size}&sig={sig}", self.base_url);
         // S3 と同じヘッダ名にして、クライアント側の実装を環境で分岐させない
-        Ok(PresignedPut { url, headers: vec![("x-amz-checksum-sha256".into(), sha.into())] })
+        Ok(PresignedPut {
+            url,
+            headers: vec![("x-amz-checksum-sha256".into(), sha.into())],
+        })
     }
     async fn presign_get(&self, key: &str, ttl: u64) -> CoreResult<String> {
         let exp = tsute_server_core::now() + ttl as i64;
@@ -96,6 +99,9 @@ pub struct AppState {
     pub admin_token: Arc<String>,
     /// テストで通信断を再現するためのフラグ（true の間 blob 転送を 503 にする）
     pub fail_blobs: Arc<std::sync::atomic::AtomicBool>,
+    /// blob 転送ごとの人工遅延（ms）。ローカルでは転送が一瞬で終わり「転送中」の挙動（overlap・中断→再開）を
+    /// E2E で捉えられないため、回線の遅さを模擬する
+    pub blob_delay_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
 pub struct Server {
@@ -126,22 +132,38 @@ pub async fn start(bind: SocketAddr, data_dir: PathBuf, admin_token: String, cfg
         core: Arc::new(core),
         admin_token: Arc::new(admin_token),
         fail_blobs: Arc::new(Default::default()),
+        blob_delay_ms: Arc::new(Default::default()),
     };
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .route("/admin/enrollment-keys", post(admin_issue))
-        .route("/blob/{*key}", get(blob_get).put(blob_put))
+        // チャンク（最大 64MiB）を受けるため axum の既定 2MB 上限を引き上げる
+        .route(
+            "/blob/{*key}",
+            get(blob_get).put(blob_put).layer(axum::extract::DefaultBodyLimit::max(
+                tsute_proto::MAX_CHUNK_SIZE as usize + 1024,
+            )),
+        )
         .route("/api/{*rest}", any(api))
         .with_state(state.clone());
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.expect("serve");
     });
-    Ok(Server { addr, base_url, state, handle })
+    Ok(Server {
+        addr,
+        base_url,
+        state,
+        handle,
+    })
 }
 
 fn lower_headers(h: &HeaderMap) -> HashMap<String, String> {
     h.iter()
-        .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str().to_ascii_lowercase(), v.to_string())))
+        .filter_map(|(k, v)| {
+            v.to_str()
+                .ok()
+                .map(|v| (k.as_str().to_ascii_lowercase(), v.to_string()))
+        })
         .collect()
 }
 
@@ -155,7 +177,11 @@ async fn api(State(st): State<AppState>, method: Method, uri: Uri, headers: Head
             body: body.to_vec(),
         })
         .await;
-    (StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), [("content-type", "application/json")], r.body)
+    (
+        StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        [("content-type", "application/json")],
+        r.body,
+    )
         .into_response()
 }
 
@@ -180,10 +206,17 @@ async fn blob_put(
     if st.fail_blobs.load(std::sync::atomic::Ordering::SeqCst) {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
+    let delay = st.blob_delay_ms.load(std::sync::atomic::Ordering::SeqCst);
+    if delay > 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+    }
     let blob = &st.core.blob;
     let exp: i64 = q.get("exp").and_then(|v| v.parse().ok()).unwrap_or(0);
     let size: u64 = q.get("size").and_then(|v| v.parse().ok()).unwrap_or(u64::MAX);
-    let sha = headers.get("x-amz-checksum-sha256").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let sha = headers
+        .get("x-amz-checksum-sha256")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     let sig = q.get("sig").map(String::as_str).unwrap_or("");
     if !blob.verify("PUT", &key, exp, &format!("{size}\n{sha}"), sig) {
         return StatusCode::FORBIDDEN.into_response();
@@ -202,9 +235,17 @@ async fn blob_put(
     StatusCode::OK.into_response()
 }
 
-async fn blob_get(State(st): State<AppState>, Path(key): Path<String>, Query(q): Query<HashMap<String, String>>) -> Response {
+async fn blob_get(
+    State(st): State<AppState>,
+    Path(key): Path<String>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Response {
     if st.fail_blobs.load(std::sync::atomic::Ordering::SeqCst) {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    let delay = st.blob_delay_ms.load(std::sync::atomic::Ordering::SeqCst);
+    if delay > 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
     }
     let blob = &st.core.blob;
     let exp: i64 = q.get("exp").and_then(|v| v.parse().ok()).unwrap_or(0);
@@ -228,7 +269,9 @@ async fn ws_handler(State(st): State<AppState>, headers: HeaderMap, ws: WebSocke
         Ok(ep) => ws.on_upgrade(move |socket| ws_session(st, socket, conn_id, ep, rx)),
         Err(e) => {
             st.core.notifier.unregister(&conn_id);
-            StatusCode::from_u16(e.status).unwrap_or(StatusCode::UNAUTHORIZED).into_response()
+            StatusCode::from_u16(e.status)
+                .unwrap_or(StatusCode::UNAUTHORIZED)
+                .into_response()
         }
     }
 }
@@ -242,7 +285,9 @@ async fn ws_session(
 ) {
     let (mut tx_ws, mut rx_ws) = socket.split();
     let hello = st.core.hello_event(&conn_id, &ep).await;
-    let _ = tx_ws.send(Message::Text(serde_json::to_string(&hello).unwrap().into())).await;
+    let _ = tx_ws
+        .send(Message::Text(serde_json::to_string(&hello).unwrap().into()))
+        .await;
     loop {
         tokio::select! {
             out = rx.recv() => match out {

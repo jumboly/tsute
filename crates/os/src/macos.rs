@@ -31,7 +31,9 @@ fn conforms(t: &UTType, to: &UTType) -> bool {
 }
 
 fn mime_of(t: &UTType, fallback: &str) -> String {
-    t.preferredMIMEType().map(|m| m.to_string()).unwrap_or_else(|| fallback.to_string())
+    t.preferredMIMEType()
+        .map(|m| m.to_string())
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 /// PNG 以外の画像データを PNG に変換する（受信側・貼り付け先の互換性を最大化するため PNG に正規化）
@@ -50,19 +52,25 @@ fn write_tmp(tmp: &Path, name: &str, data: &[u8]) -> Result<PathBuf, String> {
 }
 
 fn stamp() -> String {
-    let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let d = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{}{:03}", d.as_secs(), d.subsec_millis())
 }
 
 /// 動画の解像度と長さ。取れなければ None（表示用の補助情報なので失敗しても送信は妨げない）
 pub fn video_info(path: &Path) -> (Option<u32>, Option<u32>, Option<u64>) {
     use objc2_av_foundation::{AVMediaTypeVideo, AVURLAsset};
-    let Some(ps) = path.to_str() else { return (None, None, None) };
+    let Some(ps) = path.to_str() else {
+        return (None, None, None);
+    };
     let url = NSURL::fileURLWithPath(&ns(ps));
     let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&url, None) };
     let dur = unsafe { asset.duration() };
     let duration_ms = (dur.timescale > 0 && dur.value >= 0).then(|| (dur.value as u64 * 1000) / dur.timescale as u64);
-    let Some(media) = (unsafe { AVMediaTypeVideo }) else { return (None, None, duration_ms) };
+    let Some(media) = (unsafe { AVMediaTypeVideo }) else {
+        return (None, None, duration_ms);
+    };
     let tracks = unsafe { asset.tracksWithMediaType(media) };
     let size = tracks.firstObject().map(|t| unsafe { t.naturalSize() });
     match size {
@@ -93,8 +101,12 @@ fn candidate_for_file(p: &Path) -> Option<ClipCandidate> {
         });
     }
     if conforms(&t, unsafe { UTTypeImage }) {
-        let rep = std::fs::read(p).ok().and_then(|b| NSBitmapImageRep::imageRepWithData(&NSData::with_bytes(&b)));
-        let (width, height) = rep.map(|r| (Some(r.pixelsWide() as u32), Some(r.pixelsHigh() as u32))).unwrap_or((None, None));
+        let rep = std::fs::read(p)
+            .ok()
+            .and_then(|b| NSBitmapImageRep::imageRepWithData(&NSData::with_bytes(&b)));
+        let (width, height) = rep
+            .map(|r| (Some(r.pixelsWide() as u32), Some(r.pixelsHigh() as u32)))
+            .unwrap_or((None, None));
         return Some(ClipCandidate::Image {
             path: p.to_path_buf(),
             name,
@@ -112,7 +124,10 @@ fn candidate_for_file(p: &Path) -> Option<ClipCandidate> {
 /// Send Clipboard 押下時にだけ呼ぶ。Clipboard の常時監視はしない（最重要原則）。
 pub fn read_clipboard(tmp: &Path) -> Result<ClipSnapshot, String> {
     let pb = NSPasteboard::generalPasteboard();
-    let types: Vec<String> = pb.types().map(|a| a.iter().map(|t| t.to_string()).collect()).unwrap_or_default();
+    let types: Vec<String> = pb
+        .types()
+        .map(|a| a.iter().map(|t| t.to_string()).collect())
+        .unwrap_or_default();
     let mut candidates = Vec::new();
 
     // 1. file URL（Finder でのコピー）。同時に載るアイコンの TIFF は画像候補にしない
@@ -130,17 +145,24 @@ pub fn read_clipboard(tmp: &Path) -> Result<ClipSnapshot, String> {
     if !file_paths.is_empty() {
         match (file_paths.len(), candidate_for_file(&file_paths[0])) {
             (1, Some(c)) => candidates.push(c),
-            _ => candidates.push(ClipCandidate::Files { paths: file_paths.clone() }),
+            _ => candidates.push(ClipCandidate::Files {
+                paths: file_paths.clone(),
+            }),
         }
     } else {
         // 2. 動画の実データ（public.movie 準拠の型）
         for t in &types {
-            let Some(ut) = UTType::typeWithIdentifier(&ns(t)) else { continue };
+            let Some(ut) = UTType::typeWithIdentifier(&ns(t)) else {
+                continue;
+            };
             if !conforms(&ut, unsafe { UTTypeMovie }) {
                 continue;
             }
             if let Some(data) = pb.dataForType(&ns(t)) {
-                let ext = ut.preferredFilenameExtension().map(|e| e.to_string()).unwrap_or_else(|| "mov".into());
+                let ext = ut
+                    .preferredFilenameExtension()
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| "mov".into());
                 let bytes = data.to_vec();
                 let name = format!("clipboard-{}.{ext}", stamp());
                 let path = write_tmp(tmp, &name, &bytes)?;
@@ -178,9 +200,10 @@ pub fn read_clipboard(tmp: &Path) -> Result<ClipSnapshot, String> {
             (Some(d.to_vec()), "public.png".to_string())
         } else if let Some(d) = pb.dataForType(unsafe { NSPasteboardTypeTIFF }) {
             (to_png(&d), "public.tiff".to_string())
-        } else if types.iter().any(|t| {
-            UTType::typeWithIdentifier(&ns(t)).is_some_and(|u| conforms(&u, unsafe { UTTypeImage }))
-        }) {
+        } else if types
+            .iter()
+            .any(|t| UTType::typeWithIdentifier(&ns(t)).is_some_and(|u| conforms(&u, unsafe { UTTypeImage })))
+        {
             // JPEG/HEIC/PDF など: NSImage に読ませて TIFF 経由で PNG 化
             let img = NSImage::initWithPasteboard(NSImage::alloc(), &pb);
             let png = img.and_then(|i| i.TIFFRepresentation()).and_then(|t| to_png(&t));
@@ -189,7 +212,9 @@ pub fn read_clipboard(tmp: &Path) -> Result<ClipSnapshot, String> {
             (None, String::new())
         };
         if let Some(png) = png {
-            let (w, h) = png_dimensions(&png).map(|(w, h)| (Some(w), Some(h))).unwrap_or((None, None));
+            let (w, h) = png_dimensions(&png)
+                .map(|(w, h)| (Some(w), Some(h)))
+                .unwrap_or((None, None));
             let name = format!("clipboard-{}.png", stamp());
             let path = write_tmp(tmp, &name, &png)?;
             candidates.push(ClipCandidate::Image {
@@ -232,7 +257,11 @@ pub fn write_image_png(path: &Path) -> Result<(), String> {
     if let Some(t) = tiff {
         ok |= pb.setData_forType(Some(&t), unsafe { NSPasteboardTypeTIFF });
     }
-    if ok { Ok(()) } else { Err("failed to write image to clipboard".into()) }
+    if ok {
+        Ok(())
+    } else {
+        Err("failed to write image to clipboard".into())
+    }
 }
 
 /// 受信済みファイル（動画・複数ファイル）を file URL として載せる。Finder やメッセージ等へ貼り付けられる
@@ -244,7 +273,11 @@ pub fn write_file_urls(paths: &[PathBuf]) -> Result<(), String> {
     let arr = NSArray::from_retained_slice(&urls);
     let pb = NSPasteboard::generalPasteboard();
     pb.clearContents();
-    if pb.writeObjects(&arr) { Ok(()) } else { Err("failed to write file URLs to clipboard".into()) }
+    if pb.writeObjects(&arr) {
+        Ok(())
+    } else {
+        Err("failed to write file URLs to clipboard".into())
+    }
 }
 
 // ---------------- 通知 ----------------
@@ -288,7 +321,12 @@ mod delegate {
             }
 
             #[unsafe(method(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:))]
-            fn did_receive(&self, _center: &UNUserNotificationCenter, resp: &UNNotificationResponse, handler: &Block<dyn Fn()>) {
+            fn did_receive(
+                &self,
+                _center: &UNUserNotificationCenter,
+                resp: &UNNotificationResponse,
+                handler: &Block<dyn Fn()>,
+            ) {
                 let id = resp.notification().request().identifier().to_string();
                 if let Some(cb) = NOTIFY_CLICK.get() {
                     cb(id);
@@ -317,7 +355,9 @@ pub fn init_notifications(on_click: impl Fn(String) + Send + Sync + 'static) -> 
         tracing::info!("not running as .app bundle; OS notifications disabled");
         return false;
     }
-    let Some(mtm) = MainThreadMarker::new() else { return false };
+    let Some(mtm) = MainThreadMarker::new() else {
+        return false;
+    };
     let _ = NOTIFY_CLICK.set(Box::new(on_click));
     let center = UNUserNotificationCenter::currentNotificationCenter();
     let d = delegate::NotificationDelegate::new(mtm);
@@ -370,7 +410,11 @@ pub fn set_login_item(enabled: bool) -> Result<(), String> {
         return Err("login item requires running as .app bundle".into());
     }
     let svc = unsafe { SMAppService::mainAppService() };
-    let r = if enabled { unsafe { svc.registerAndReturnError() } } else { unsafe { svc.unregisterAndReturnError() } };
+    let r = if enabled {
+        unsafe { svc.registerAndReturnError() }
+    } else {
+        unsafe { svc.unregisterAndReturnError() }
+    };
     r.map_err(|e| e.localizedDescription().to_string())
 }
 
@@ -379,11 +423,49 @@ pub fn set_login_item(enabled: bool) -> Result<(), String> {
 pub fn write_raw_for_test(uti: &str, bytes: &[u8]) -> Result<(), String> {
     let pb = NSPasteboard::generalPasteboard();
     pb.clearContents();
-    if pb.setData_forType(Some(&NSData::with_bytes(bytes)), &ns(uti)) { Ok(()) } else { Err("write failed".into()) }
+    if pb.setData_forType(Some(&NSData::with_bytes(bytes)), &ns(uti)) {
+        Ok(())
+    } else {
+        Err("write failed".into())
+    }
 }
 
 /// テスト専用: 現在の Clipboard のテキスト（退避・復元用）
 #[doc(hidden)]
 pub fn read_text_for_test() -> Option<String> {
-    NSPasteboard::generalPasteboard().stringForType(unsafe { NSPasteboardTypeString }).map(|s| s.to_string())
+    NSPasteboard::generalPasteboard()
+        .stringForType(unsafe { NSPasteboardTypeString })
+        .map(|s| s.to_string())
+}
+
+/// 動画の先頭付近のフレームを PNG サムネイルにする（プレビュー表示用。失敗しても送信は妨げない）
+pub fn video_thumbnail_png(path: &Path, max_dim: f64) -> Option<Vec<u8>> {
+    use objc2_av_foundation::{AVAssetImageGenerator, AVURLAsset};
+    use objc2_core_foundation::CGSize;
+    use objc2_core_media::CMTime;
+    let url = NSURL::fileURLWithPath(&ns(path.to_str()?));
+    let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&url, None) };
+    let generator = unsafe { AVAssetImageGenerator::assetImageGeneratorWithAsset(&asset) };
+    unsafe {
+        generator.setAppliesPreferredTrackTransform(true);
+        generator.setMaximumSize(CGSize {
+            width: max_dim,
+            height: max_dim,
+        });
+    }
+    let t = unsafe { CMTime::with_seconds(0.0, 600) };
+    let cg = unsafe { generator.copyCGImageAtTime_actualTime_error(t, std::ptr::null_mut()) }.ok()?;
+    let rep = NSBitmapImageRep::initWithCGImage(NSBitmapImageRep::alloc(), &cg);
+    let props = NSDictionary::new();
+    unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &props) }.map(|d| d.to_vec())
+}
+
+/// Finder で該当ファイルを選択表示する
+pub fn reveal_in_finder(paths: &[PathBuf]) {
+    let urls: Vec<Retained<NSURL>> = paths
+        .iter()
+        .map(|p| NSURL::fileURLWithPath(&ns(&p.to_string_lossy())))
+        .collect();
+    let arr = NSArray::from_retained_slice(&urls);
+    objc2_app_kit::NSWorkspace::sharedWorkspace().activateFileViewerSelectingURLs(&arr);
 }
