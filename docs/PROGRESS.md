@@ -4,8 +4,9 @@
 
 ## 現在地
 
-Phase 1（macOS）実装中。**ローカル開発サーバー相手の同一 Mac 2 Endpoint E2E は 14/14 PASS**。
-**実 AWS へのデプロイと AWS 経由の E2E が未実施**（AWS 認証・アカウント確認待ち）。
+**Phase 1 完了地点で停止中（ユーザーの実機確認待ち）。** 詳細は docs/PHASE1_REPORT.md。
+test 環境（AWS 444369845617 / ap-northeast-1）にデプロイ済み。**クラウド経由 E2E 14/14 PASS**。
+Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
 ### できていること
 - Rust workspace: proto / server-core / server-local / server-lambda / client-core / os / desktop
@@ -21,8 +22,8 @@ Phase 1（macOS）実装中。**ローカル開発サーバー相手の同一 Ma
 
 ## 次にやること
 
-1. **[ユーザー待ち]** AWS アカウント・リージョン確認と `aws login` → `infra/bootstrap.sh` → `infra/deploy.sh test`
-2. AWS 経由 E2E: `python3 e2e/run_e2e.py --target cloud --env test`（chunk size/並列数のベンチも）
+1. **[ユーザー待ち]** Phase 1 の実機確認（docs/PHASE1_REPORT.md の手順）
+2. chunk size / 並列数の実回線ベンチ
 3. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
    メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
 4. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行

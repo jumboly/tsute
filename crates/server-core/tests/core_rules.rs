@@ -296,7 +296,27 @@ async fn revoked_endpoint_token_is_invalid() {
     let (a, ta) = endpoint(&c, "A").await;
     let (s, _) = req(&c, "GET", "/api/me", Some(&ta), serde_json::Value::Null).await;
     assert_eq!(s, 200);
+    let (b, tb) = endpoint(&c, "B").await;
+    let (_, t) = req(
+        &c,
+        "POST",
+        "/api/transfers",
+        Some(&ta),
+        serde_json::json!({"receiver": b, "kind": "files", "files": [{"name": "x", "size": 10, "mime": "a"}]}),
+    )
+    .await;
+    let id = t["transfer_id"].as_str().unwrap().to_string();
     c.revoke_endpoint(&a).await.unwrap();
     let (s, _) = req(&c, "GET", "/api/me", Some(&ta), serde_json::Value::Null).await;
     assert_eq!(s, 401);
+    // 失効した送信者の未完了転送は取り消される
+    let (_, d) = req(
+        &c,
+        "GET",
+        &format!("/api/transfers/{id}"),
+        Some(&tb),
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(d["transfer"]["state"], "cancelled");
 }

@@ -30,218 +30,218 @@
       "id": "cloud-infra",
       "area": "cloud",
       "title": "AWS Serverless インフラ (CloudFront/HTTP API/WS API/Lambda/DynamoDB/S3)",
-      "status": "in_progress",
-      "notes": "CloudFormation 3 スタック作成、cfn-lint 通過。未デプロイ"
+      "status": "done",
+      "notes": "bootstrap/backend/edge を test 環境にデプロイ済み"
     },
     {
       "id": "cloud-deploy",
       "area": "cloud",
       "title": "実 AWS へのデプロイと疎通確認",
-      "status": "todo",
-      "notes": "AWS 認証情報が必要"
+      "status": "done",
+      "notes": "test 環境 https://<cloudfront>/ で /api, /ws, / を確認"
     },
     {
       "id": "enrollment",
       "area": "auth",
       "title": "Endpoint enrollment (一回限り・短時間 Enrollment Key, IAM 保護の発行経路)",
-      "status": "in_progress",
-      "notes": "UI 登録・一回限り（再利用 403）をローカル E2E で確認。IAM 経由の発行（admin Lambda）は実 AWS 未検証"
+      "status": "done",
+      "notes": "IAM 保護の admin Lambda で発行、UI 登録、一回限り（再利用 403）をクラウド E2E で確認"
     },
     {
       "id": "endpoint-auth",
       "area": "auth",
       "title": "Endpoint 認証 (Ed25519 challenge/response → 短期アクセストークン)",
-      "status": "in_progress",
-      "notes": "ローカル結合/E2E 済み。AWS 未検証"
+      "status": "done",
+      "notes": "Ed25519 challenge/response + トークン。CloudFront 経由の Authorization 転送を含めクラウド E2E で確認"
     },
     {
       "id": "credential-storage",
       "area": "auth",
       "title": "秘密鍵を macOS Keychain に保存",
-      "status": "in_progress",
-      "notes": "Keychain 実装済み。E2E は開発用ファイルストア。Keychain は .app での手動確認待ち"
+      "status": "done",
+      "notes": ".app で Keychain 保存→再起動後の読み出し→削除を確認（app_checks）"
     },
     {
       "id": "multi-profile",
       "area": "desktop",
       "title": "複数 profile (設定/鍵/DB/受信先の分離)",
-      "status": "in_progress",
-      "notes": "プロファイル分離・二重起動ロック実装。ローカル E2E で test-a/test-b/test-c 同時起動"
+      "status": "done",
+      "notes": "プロファイル分離・二重起動ロック。E2E で 3 プロファイル同時起動"
     },
     {
       "id": "multi-instance",
       "area": "desktop",
       "title": "同一 Mac で複数 Endpoint 同時起動 + Tray で識別",
-      "status": "in_progress",
-      "notes": "メニューバーに profile 名表示（PoC スクショ確認）。ローカル E2E で同時起動"
+      "status": "done",
+      "notes": "同時起動・メニューバーに profile 名表示（PoC スクショ）。メニュー操作自体は手動確認項目"
     },
     {
       "id": "endpoint-list",
       "area": "core",
       "title": "Endpoint 一覧 + online/offline",
-      "status": "in_progress",
-      "notes": "ローカル E2E（UI の送信先一覧・online 表示）済み。AWS 未検証"
+      "status": "done",
+      "notes": "クラウド E2E で online 表示・送信先一覧を確認"
     },
     {
       "id": "websocket",
       "area": "core",
       "title": "WebSocket 接続・通知・keepalive・再接続",
-      "status": "in_progress",
-      "notes": "ローカル結合/E2E 済み。AWS(API Gateway+CloudFront) 未検証"
+      "status": "done",
+      "notes": "API Gateway WebSocket + CloudFront でクラウド E2E。keepalive/再接続はローカル結合テスト"
     },
     {
       "id": "clip-text",
       "area": "clipboard",
       "title": "Clipboard Text 送信 (inline / 大きい場合は Object)",
-      "status": "in_progress",
-      "notes": "実 Clipboard + UI でローカル E2E 済み（inline と 64KiB 超）。AWS 未検証"
+      "status": "done",
+      "notes": "実 Clipboard + UI + クラウドで inline / 64KiB 超を確認"
     },
     {
       "id": "clip-image",
       "area": "clipboard",
       "title": "Clipboard Image 送信 (PNG 正規化, 幅高さ)",
-      "status": "in_progress",
-      "notes": "PNG/TIFF 正規化の実 Clipboard テスト、UI ローカル E2E 済み。AWS 未検証"
+      "status": "done",
+      "notes": "PNG / TIFF 正規化、クラウド E2E で反映まで確認"
     },
     {
       "id": "clip-video",
       "area": "clipboard",
       "title": "Clipboard Video 送信 (file URL / 実データ双方)",
-      "status": "in_progress",
-      "notes": "file URL / 実データ双方、解像度・長さ・サムネイル。ローカル E2E 済み。AWS 未検証"
+      "status": "done",
+      "notes": "file URL / 実データの双方、解像度・長さ・サムネイル。クラウド E2E"
     },
     {
       "id": "clip-preview",
       "area": "clipboard",
       "title": "送信前プレビュー・確認画面",
-      "status": "in_progress",
-      "notes": "プレビュー確認画面（送信前に送られないことを E2E で確認）"
+      "status": "done",
+      "notes": "送信前確認画面。確認前に送られないことを E2E で確認"
     },
     {
       "id": "clip-apply",
       "area": "clipboard",
       "title": "受信 Clipboard の明示的反映 / ファイル保存",
       "status": "in_progress",
-      "notes": "受信だけでは Clipboard を変えないこと、明示反映を E2E で確認。保存…はダイアログのため手動確認待ち"
+      "notes": "明示反映は E2E で確認済み。「保存…」は OS ダイアログのため手動確認待ち"
     },
     {
       "id": "file-drop-single",
       "area": "files",
       "title": "Single File Drop",
       "status": "in_progress",
-      "notes": "Drop ハンドラ以降を E2E。OS からの実ドラッグは手動確認待ち"
+      "notes": "Drop ハンドラ以降はクラウド E2E 済み。Finder からの実ドラッグは手動確認待ち"
     },
     {
       "id": "file-drop-multi",
       "area": "files",
       "title": "Multiple File Drop",
       "status": "in_progress",
-      "notes": "同上。フォルダは除外表示"
+      "notes": "同上"
     },
     {
       "id": "file-confirm",
       "area": "files",
       "title": "File 確認画面 (名前/パス/各サイズ/数/合計/送信先)",
-      "status": "in_progress",
-      "notes": "名前/パス/各サイズ/件数/合計/送信先を E2E で検証"
+      "status": "done",
+      "notes": "名前/パス/各サイズ/件数/合計/送信先をクラウド E2E で検証"
     },
     {
       "id": "object-transfer",
       "area": "transfer",
       "title": "Object Storage 経由の転送",
-      "status": "in_progress",
-      "notes": "ローカル E2E 済み。S3 未検証"
+      "status": "done",
+      "notes": "S3 presigned PUT/GET（0 バイト含む）"
     },
     {
       "id": "chunk-transfer",
       "area": "transfer",
       "title": "大容量 chunk 転送 (独立 Object, 並列)",
-      "status": "in_progress",
-      "notes": "ローカル E2E（64MB, 8MiB chunk）済み。S3 未検証"
+      "status": "done",
+      "notes": "8MiB chunk・並列 4 で 64MB をクラウド E2E"
     },
     {
       "id": "overlap",
       "area": "transfer",
       "title": "Upload / Download overlap",
-      "status": "in_progress",
-      "notes": "ローカル E2E で送信中に受信開始を確認。S3 未検証"
+      "status": "done",
+      "notes": "クラウド E2E で送信側アップロード中に受信側ダウンロード開始を確認"
     },
     {
       "id": "progress",
       "area": "transfer",
       "title": "Progress 表示",
-      "status": "in_progress",
-      "notes": "UI の進捗バー（E2E で表示確認）"
+      "status": "done",
+      "notes": "UI 進捗バー"
     },
     {
       "id": "resume",
       "area": "transfer",
       "title": "Resume / retry / 再起動後再開 / chunk 再取得 / checksum",
-      "status": "in_progress",
-      "notes": "ローカル E2E: 受信側 kill→再開、送信側 kill→再開。S3 未検証"
+      "status": "done",
+      "notes": "クラウド E2E: 受信側 kill→再開、送信側 kill→再開。改ざん検出・一時障害はローカル結合テスト"
     },
     {
       "id": "cleanup",
       "area": "transfer",
       "title": "完了時削除 + Lifecycle + 期限",
-      "status": "in_progress",
-      "notes": "完了/取消時の削除は実装済み。S3 Lifecycle は IaC で"
+      "status": "done",
+      "notes": "受領/取消/Endpoint 失効時に即削除 + S3 Lifecycle 8 日 + DynamoDB TTL 7 日"
     },
     {
       "id": "notification",
       "area": "desktop",
       "title": "OS 通知",
       "status": "in_progress",
-      "notes": "UNUserNotificationCenter 実装。.app での手動確認待ち"
+      "notes": "実装済み。ad-hoc 署名 .app で許可が granted=false。手動許可・表示確認待ち"
     },
     {
       "id": "tray",
       "area": "desktop",
       "title": "Menu Bar 常駐 (Open/状態/最近の受信/Settings/Quit)",
       "status": "in_progress",
-      "notes": "メニュー: 状態/Open/Clipboard を送る/最近の受信/ログイン時に起動/設定/終了。手動確認待ち"
+      "notes": "実装済み。メニュー操作は手動確認待ち"
     },
     {
       "id": "window-lifecycle",
       "area": "desktop",
       "title": "Close で WebView 破棄・バックグラウンド継続",
-      "status": "in_progress",
-      "notes": "Close で WebView 破棄・常駐継続・受信継続を E2E で確認"
+      "status": "done",
+      "notes": "Close で WebView 破棄・常駐・受信継続をクラウド E2E で確認"
     },
     {
       "id": "autostart",
       "area": "desktop",
       "title": "ログイン時自動起動 (hidden)",
       "status": "in_progress",
-      "notes": "SMAppService.mainApp 実装。.app での手動確認待ち"
+      "notes": "SMAppService 登録/解除を確認。実ログインでの hidden 起動は手動確認待ち"
     },
     {
       "id": "ci",
       "area": "cicd",
       "title": "GitHub Actions CI (build/test)",
       "status": "in_progress",
-      "notes": "ワークフロー作成済み。GitHub リポジトリ未作成のため未実行"
+      "notes": "ワークフロー作成済み。GitHub リポジトリ未作成で未実行"
     },
     {
       "id": "cd-backend",
       "area": "cicd",
       "title": "Backend CD (OIDC + 最小権限 Role)",
       "status": "in_progress",
-      "notes": "ワークフロー・OIDC ロール定義済み。未実行"
+      "notes": "OIDC ロールはデプロイ済み。ワークフロー未実行（リポジトリ未作成）"
     },
     {
       "id": "blog-repo",
       "area": "blog",
       "title": "Blog リポジトリ (Astro) と独立 CI/CD",
       "status": "in_progress",
-      "notes": "~/src/tsute-blog（Astro 7）ローカルでビルド確認。GitHub/デプロイ未実行"
+      "notes": "Astro ビルドを手動同期し / で配信確認。Blog CI は未実行"
     },
     {
       "id": "e2e-macos",
       "area": "test",
       "title": "macOS 上の 2 Endpoint E2E (実アプリ操作)",
-      "status": "in_progress",
-      "notes": "ローカル開発サーバーで 14/14 PASS。AWS 経由は未実施"
+      "status": "done",
+      "notes": "クラウド経由 14/14 PASS（同一 Mac 2 Endpoint、実アプリ UI、実 Clipboard）"
     }
   ]
 }

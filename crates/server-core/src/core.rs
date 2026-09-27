@@ -186,6 +186,21 @@ impl<S: Store, B: BlobStore, N: Notifier> Core<S, B, N> {
     pub async fn revoke_endpoint(&self, endpoint_id: &str) -> Result<()> {
         self.store.delete_endpoint(endpoint_id).await?;
         self.store.delete_tokens_of(endpoint_id).await?;
+        // 失効した Endpoint が関わる未完了の転送は完了し得ないので、取り消して一時データを即削除する
+        for t in self.store.list_transfers(now()).await? {
+            if (t.sender == endpoint_id || t.receiver == endpoint_id)
+                && self
+                    .store
+                    .transition(
+                        &t.transfer_id,
+                        &[TransferState::Uploading, TransferState::Uploaded],
+                        TransferState::Cancelled,
+                    )
+                    .await?
+            {
+                self.blob.delete_prefix(&blob_prefix(&t.transfer_id)).await?;
+            }
+        }
         self.broadcast(None, &ServerEvent::EndpointsChanged).await;
         Ok(())
     }

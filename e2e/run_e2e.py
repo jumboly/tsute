@@ -105,7 +105,15 @@ class Cloud:
         return json.loads(r.stdout)["enrollment_key"]
 
     def stop(self):
-        pass
+        # テストで登録した Endpoint を失効させ、クラウドに残さない
+        r = subprocess.run([str(ROOT / "scripts/admin.sh"), self.env, "list"], capture_output=True, text=True)
+        try:
+            eps = json.loads(r.stdout)["endpoints"]
+        except (ValueError, KeyError):
+            return
+        for e in eps:
+            if e["name"].startswith("E2E "):
+                subprocess.run([str(ROOT / "scripts/admin.sh"), self.env, "revoke", e["endpoint_id"]], capture_output=True)
 
 
 def launch(binary, profile, work, extra=()):
@@ -158,12 +166,17 @@ def main():
     sys.exit(0 if ok else 1)
 
 
+RUN = time.strftime("%H%M%S")
+
+
 def run_all(args, server, work, apps):
     binary = args.binary
+    # クラウドには過去の実行の Endpoint が残り得るので、名前を実行ごとに一意にする
+    name_a, name_b = f"E2E Mac A {RUN}", f"E2E Mac B {RUN}"
 
     @step("launch two endpoints (test-a, test-b) and enroll via UI")
     def enroll():
-        for prof, name in (("test-a", "E2E Mac A"), ("test-b", "E2E Mac B")):
+        for prof, name in (("test-a", name_a), ("test-b", name_b)):
             a = launch(binary, prof, work)
             apps[prof] = a
             a.wait(lambda: a.cmd(cmd="window_open"), "enroll window shown for unenrolled profile")
@@ -188,7 +201,7 @@ def run_all(args, server, work, apps):
             for attempt in range(2):
                 C.fill("enroll-url", server.base_url)
                 C.fill("enroll-key", key)
-                C.fill("enroll-name", "E2E C")
+                C.fill("enroll-name", f"E2E C {RUN}")
                 C.click("enroll-submit")
                 if attempt == 0:
                     C.wait(lambda: C.view() == "main", "first enrollment succeeds")
@@ -203,8 +216,8 @@ def run_all(args, server, work, apps):
 
     @step("endpoint list shows peer online")
     def endpoints():
-        A.wait(lambda: A.js("return [...document.querySelectorAll('#target option')].some(o => o.textContent.includes('E2E Mac B'))"), "B in A's targets")
-        A.js("const s = document.getElementById('target'); s.value = [...s.options].find(o => o.textContent.includes('E2E Mac B')).value; return 1")
+        A.wait(lambda: A.js("return [...document.querySelectorAll('#target option')].some(o => o.textContent.includes('" + name_b + "'))"), "B in A's targets")
+        A.js("const s = document.getElementById('target'); s.value = [...s.options].find(o => o.textContent.includes('" + name_b + "')).value; return 1")
         return A.js("return [...document.querySelectorAll('#target option')].map(o => o.textContent).join(', ')")
     endpoints()
 
@@ -307,7 +320,7 @@ def run_all(args, server, work, apps):
         A.wait(lambda: A.view() == "files", "confirmation view")
         count, total, target = A.text("files-count"), A.text("files-total"), A.text("files-target")
         listing = A.text("files-list")
-        assert count == "3" and "20.0 MB" in total and target == "E2E Mac B", (count, total, target)
+        assert count == "3" and "20.0 MB" in total and target == name_b, (count, total, target)
         assert str(big) in listing and "memo.txt" in listing
         # Drop しただけでは送信されない
         time.sleep(1.5)

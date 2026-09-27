@@ -232,7 +232,13 @@ impl Api {
 
     /// presigned URL への PUT（Object Storage 直、API を経由しない）
     pub async fn put_blob(&self, u: &PresignedUrl, body: Vec<u8>) -> Result<(), Error> {
-        let mut rb = self.http.put(&u.url).body(body);
+        // 空の本文だと Content-Length が付かず、S3 の署名（content-length: 0 を含む）と一致しなくなるため明示する
+        let len = body.len();
+        let mut rb = self
+            .http
+            .put(&u.url)
+            .header(reqwest::header::CONTENT_LENGTH, len)
+            .body(body);
         for (k, v) in &u.headers {
             rb = rb.header(k, v);
         }

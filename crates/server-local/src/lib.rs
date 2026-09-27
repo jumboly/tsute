@@ -221,6 +221,14 @@ async fn blob_put(
     if !blob.verify("PUT", &key, exp, &format!("{size}\n{sha}"), sig) {
         return StatusCode::FORBIDDEN.into_response();
     }
+    // S3 は Content-Length を署名対象にするため、ヘッダがない/不一致のリクエストを拒否する（0 バイト時に実際に踏んだ）
+    let cl = headers
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok());
+    if cl != Some(size) {
+        return (StatusCode::FORBIDDEN, "SignatureDoesNotMatch (content-length)").into_response();
+    }
     // S3 が x-amz-checksum-sha256 不一致を 400 BadDigest で拒否する挙動を再現
     if body.len() as u64 != size || STANDARD.encode(Sha256::digest(&body)) != sha {
         return (StatusCode::BAD_REQUEST, "BadDigest").into_response();
