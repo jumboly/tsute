@@ -16,11 +16,39 @@ use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde_json::{Value, json};
 use tsute_server_core::{Config, Core, Request};
 
-type AwsCore = Core<aws::DynamoStore, aws::S3Blob, aws::ApiGwNotifier>;
+type AwsCore = Core<aws::DynamoStore, aws::S3Blob, aws::ApiGwNotifier, Option<tsute_webpush::VapidPusher>>;
 static CORE: OnceLock<AwsCore> = OnceLock::new();
 
 fn env(k: &str) -> String {
     std::env::var(k).unwrap_or_else(|_| panic!("env {k} is required"))
+}
+
+/// VAPID 秘密鍵を SSM（SecureString）から読む。未作成・未設定なら Web Push を無効にして起動する
+/// （Push はヒントで、無くても次回起動時の回収で配送は成立するため、起動失敗にはしない）
+async fn load_pusher(conf: &aws_config::SdkConfig) -> Option<tsute_webpush::VapidPusher> {
+    let param = std::env::var("VAPID_SSM_PARAMETER").ok().filter(|v| !v.is_empty())?;
+    let subject = std::env::var("VAPID_SUBJECT").ok().filter(|v| !v.is_empty())?;
+    let r = aws_sdk_ssm::Client::new(conf)
+        .get_parameter()
+        .name(&param)
+        .with_decryption(true)
+        .send()
+        .await;
+    let key = match r {
+        Ok(o) => o.parameter.and_then(|p| p.value)?,
+        Err(e) => {
+            // 鍵の値はログに出さない（エラー種別だけ）
+            tracing::warn!(error = %aws_sdk_ssm::error::DisplayErrorContext(&e), "web push disabled: VAPID key unavailable");
+            return None;
+        }
+    };
+    match tsute_webpush::VapidPusher::new(&key, &subject) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            tracing::warn!(error = %e, "web push disabled: invalid VAPID configuration");
+            None
+        }
+    }
 }
 
 async fn init() -> AwsCore {
@@ -43,6 +71,7 @@ async fn init() -> AwsCore {
         },
         Config::default(),
     )
+    .with_pusher(load_pusher(&conf).await)
 }
 
 fn lower_headers(v: &Value) -> HashMap<String, String> {

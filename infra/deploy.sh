@@ -31,6 +31,15 @@ ZIP=target/lambda-build/lambda/tsute-lambda/bootstrap.zip
 KEY="lambda/tsute-$(shasum -a 256 "$ZIP" | cut -c1-16).zip"
 aws s3 cp --region "$AWS_REGION" --only-show-errors "$ZIP" "s3://${ARTIFACT_BUCKET}/${KEY}"
 
+# App のオリジン（S3 CORS と VAPID subject に使う）。独自ドメインが無ければ既存の edge スタックの出力から取る。
+# 初回（edge 未作成）は空になるので、その場合は 2 回目のデプロイで設定される
+if [[ -n "${TSUTE_APP_DOMAIN:-}" ]]; then
+  APP_ORIGIN="https://${TSUTE_APP_DOMAIN}"
+else
+  APP_ORIGIN="$(aws cloudformation describe-stacks --region "$EDGE_REGION" --stack-name "tsute-${ENV_NAME}-edge"     --query "Stacks[0].Outputs[?OutputKey=='AppBaseUrl'].OutputValue" --output text 2>/dev/null || true)"
+  [[ "$APP_ORIGIN" == "None" ]] && APP_ORIGIN=""
+fi
+
 echo "==> Deploying backend stack (tsute-${ENV_NAME}-backend, ${AWS_REGION})"
 aws cloudformation deploy --region "$AWS_REGION" \
   --stack-name "tsute-${ENV_NAME}-backend" \
@@ -38,11 +47,12 @@ aws cloudformation deploy --region "$AWS_REGION" \
   --role-arn "$CFN_ROLE_ARN" \
   --capabilities CAPABILITY_IAM \
   --no-fail-on-empty-changeset \
-  --parameter-overrides EnvName="$ENV_NAME" ArtifactBucket="$ARTIFACT_BUCKET" LambdaS3Key="$KEY"
+  --parameter-overrides EnvName="$ENV_NAME" ArtifactBucket="$ARTIFACT_BUCKET" LambdaS3Key="$KEY" AppOrigin="$APP_ORIGIN"
 
 out() { aws cloudformation describe-stacks --region "$1" --stack-name "$2" --query "Stacks[0].Outputs[?OutputKey=='$3'].OutputValue" --output text; }
 HTTP_DOMAIN="$(out "$AWS_REGION" "tsute-${ENV_NAME}-backend" HttpApiDomain)"
 WS_DOMAIN="$(out "$AWS_REGION" "tsute-${ENV_NAME}-backend" WsApiDomain)"
+TRANSFER_DOMAIN="$(out "$AWS_REGION" "tsute-${ENV_NAME}-backend" TransferBucketDomain)"
 
 echo "==> Deploying edge stack (tsute-${ENV_NAME}-edge, ${EDGE_REGION})"
 aws cloudformation deploy --region "$EDGE_REGION" \
@@ -52,7 +62,8 @@ aws cloudformation deploy --region "$EDGE_REGION" \
   --capabilities CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset \
   --parameter-overrides EnvName="$ENV_NAME" HttpApiDomain="$HTTP_DOMAIN" WsApiDomain="$WS_DOMAIN" \
-    AppDomainName="${TSUTE_APP_DOMAIN:-}" CertificateArn="${TSUTE_CERT_ARN:-}" GitHubBlogRepo="${TSUTE_GITHUB_BLOG_REPO:-}"
+    AppDomainName="${TSUTE_APP_DOMAIN:-}" CertificateArn="${TSUTE_CERT_ARN:-}" GitHubBlogRepo="${TSUTE_GITHUB_BLOG_REPO:-}" \
+    TransferBucketDomain="$TRANSFER_DOMAIN" GitHubAppRepo="${TSUTE_GITHUB_APP_REPO:-}"
 
 APP_BASE_URL="$(out "$EDGE_REGION" "tsute-${ENV_NAME}-edge" AppBaseUrl)"
 DIST_DOMAIN="$(out "$EDGE_REGION" "tsute-${ENV_NAME}-edge" DistributionDomainName)"
@@ -63,11 +74,15 @@ cat > "$OUT_DIR/${ENV_NAME}.json" <<JSON
   "cloudfront_domain": "${DIST_DOMAIN}",
   "distribution_id": "$(out "$EDGE_REGION" "tsute-${ENV_NAME}-edge" DistributionId)",
   "blog_bucket": "$(out "$EDGE_REGION" "tsute-${ENV_NAME}-edge" BlogBucketName)",
+  "app_bucket": "$(out "$EDGE_REGION" "tsute-${ENV_NAME}-edge" AppBucketName)",
   "admin_function": "$(out "$AWS_REGION" "tsute-${ENV_NAME}-backend" AdminFunctionName)",
   "region": "${AWS_REGION}"
 }
 JSON
-echo "==> Done"
+if [[ -z "$APP_ORIGIN" ]]; then
+  echo "注意: 初回デプロイのため AppOrigin が未設定です。Web Client の CORS / Web Push を有効にするにはもう一度 infra/deploy.sh ${ENV_NAME} を実行してください。"
+fi
+echo "==> Done（Web Client の配信は infra/deploy-web.sh ${ENV_NAME}、Web Push の鍵は infra/vapid.sh ${ENV_NAME}）"
 echo "APP_BASE_URL=${APP_BASE_URL}"
 if [[ -n "${TSUTE_APP_DOMAIN:-}" ]]; then
   # 親ゾーンに直接 CNAME を置くか、Route 53 に委任するか（infra/route53-subdomain.sh）は DNS 事業者次第

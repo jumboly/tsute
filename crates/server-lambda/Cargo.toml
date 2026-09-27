@@ -11,11 +11,13 @@ path = "src/main.rs"
 [dependencies]
 tsute-proto = { path = "../proto" }
 tsute-server-core = { path = "../server-core" }
+tsute-webpush = { path = "../webpush" }
 lambda_runtime = "1"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-dynamodb = "1"
 aws-sdk-s3 = "1"
 aws-sdk-apigatewaymanagement = "1"
+aws-sdk-ssm = "1"
 aws-smithy-types = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }

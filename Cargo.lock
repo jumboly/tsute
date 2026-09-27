@@ -293,6 +293,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-ssm"
+version = "1.126.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4900fb8557ca376ea40f0fd825d2df3fd95865e6531b1b9ce7a1391eb9ec6518"
+dependencies = [
+ "arc-swap",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-schema",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "http 1.5.0",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-sso"
 version = "1.113.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6141,6 +6166,7 @@ dependencies = [
  "aws-sdk-apigatewaymanagement",
  "aws-sdk-dynamodb",
  "aws-sdk-s3",
+ "aws-sdk-ssm",
  "aws-smithy-types",
  "base64 0.22.1",
  "lambda_runtime",
@@ -6151,6 +6177,7 @@ dependencies = [
  "tracing-subscriber",
  "tsute-proto",
  "tsute-server-core",
+ "tsute-webpush",
 ]
 
 [[package]]

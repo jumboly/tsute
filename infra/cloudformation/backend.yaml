@@ -20,6 +20,16 @@ Parameters:
     Type: Number
     Default: 50
     Description: Steady-state requests/sec per API (caps cost if credentials leak)
+  AppOrigin:
+    Type: String
+    Default: ""
+    AllowedPattern: "(https://[a-z0-9.-]+)?"
+    Description: >-
+      Origin of APP_BASE_URL (https://host). Used for the transfer bucket CORS (the Web client uploads/downloads
+      chunks with presigned URLs) and as the VAPID subject. Empty = no CORS, Web Push disabled.
+
+Conditions:
+  HasAppOrigin: !Not [!Equals [!Ref AppOrigin, ""]]
 
 Resources:
   Table:
@@ -50,6 +60,17 @@ Resources:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      # Browser からの presigned PUT/GET を App のオリジンだけに許可する（他サイトから URL を使わせない。
+      # 署名付き URL 自体が権限なので CORS は防御の本体ではないが、許可範囲を最小にしておく）
+      CorsConfiguration: !If
+        - HasAppOrigin
+        - CorsRules:
+            - AllowedOrigins: [!Ref AppOrigin]
+              AllowedMethods: [GET, PUT]
+              AllowedHeaders: ["*"]
+              ExposedHeaders: [ETag]
+              MaxAge: 3600
+        - !Ref AWS::NoValue
       LifecycleConfiguration:
         Rules:
           - Id: expire-transfers
@@ -96,6 +117,16 @@ Resources:
               - Effect: Allow
                 Action: execute-api:ManageConnections
                 Resource: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/ws/POST/@connections/*
+              # VAPID 秘密鍵（infra/vapid.sh が SecureString で作成。リポジトリ・テンプレートには入れない）
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tsute/${EnvName}/vapid-private-key
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub ssm.${AWS::Region}.amazonaws.com
 
   AdminFunctionRole:
     Type: AWS::IAM::Role
@@ -144,6 +175,9 @@ Resources:
           TABLE_NAME: !Ref Table
           BUCKET_NAME: !Ref TransferBucket
           WS_MANAGEMENT_ENDPOINT: !Sub https://${WsApi}.execute-api.${AWS::Region}.amazonaws.com/ws
+          # 両方そろったときだけ Web Push を有効にする（鍵が無い環境では /api/push/config が 404）
+          VAPID_SSM_PARAMETER: !Sub /tsute/${EnvName}/vapid-private-key
+          VAPID_SUBJECT: !Ref AppOrigin
           RUST_LOG: info
 
   AdminFunction:
@@ -264,3 +298,5 @@ Outputs:
     Value: !Ref Table
   TransferBucketName:
     Value: !Ref TransferBucket
+  TransferBucketDomain:
+    Value: !GetAtt TransferBucket.RegionalDomainName

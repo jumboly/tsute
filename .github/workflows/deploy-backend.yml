@@ -8,6 +8,7 @@ on:
       - "crates/proto/**"
       - "crates/server-core/**"
       - "crates/server-lambda/**"
+      - "crates/webpush/**"
       - "infra/**"
       - "Cargo.lock"
       - ".github/workflows/deploy-backend.yml"
@@ -37,6 +38,7 @@ jobs:
       TSUTE_APP_DOMAIN: ${{ vars.TSUTE_APP_DOMAIN }}
       TSUTE_CERT_ARN: ${{ vars.TSUTE_CERT_ARN }}
       TSUTE_GITHUB_BLOG_REPO: ${{ vars.TSUTE_GITHUB_BLOG_REPO }}
+      TSUTE_GITHUB_APP_REPO: ${{ vars.TSUTE_GITHUB_APP_REPO }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

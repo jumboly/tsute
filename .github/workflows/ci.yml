@@ -49,3 +49,21 @@ jobs:
         with:
           name: lambda-bootstrap
           path: target/lambda/tsute-lambda/bootstrap.zip
+
+  web-e2e:
+    # Web / PWA Client をローカル開発サーバー相手に Chromium / WebKit で実 UI 操作する（e2e/web_e2e.py）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright==1.62.0 && python -m playwright install --with-deps chromium webkit
+      - run: python e2e/web_e2e.py --target local
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-e2e
+          path: e2e/out/web-e2e-local.json

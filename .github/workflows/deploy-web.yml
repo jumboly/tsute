@@ -1,0 +1,42 @@
+name: Deploy web client
+
+# Web / PWA Client（web/）だけを /app/ へ配る。Backend・Blog は再デプロイしない（ADR-0015 §1）。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "infra/deploy-web.sh"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target GitHub Environment
+        type: choice
+        options: [test, production]
+        default: test
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-web-${{ inputs.environment || 'test' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Variables: AWS_WEB_DEPLOY_ROLE_ARN（edge の AppWebDeployRoleArn）, TSUTE_APP_BUCKET, TSUTE_DISTRIBUTION_ID。
+    # Web 用ロールは App バケットと invalidation しか触れず、スタックの参照もできないため値を Variables で渡す
+    environment: ${{ inputs.environment || 'test' }}
+    env:
+      TSUTE_APP_BUCKET: ${{ vars.TSUTE_APP_BUCKET }}
+      TSUTE_DISTRIBUTION_ID: ${{ vars.TSUTE_DISTRIBUTION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_WEB_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - run: infra/deploy-web.sh "${{ inputs.environment || 'test' }}"

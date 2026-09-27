@@ -1,8 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   tsute edge (per environment, deploy in us-east-1): single FQDN CloudFront distribution.
-  "/" = technical blog (S3, deployed by the separate blog repository), "/api/*" = HTTP API, "/ws" = WebSocket API.
-  Owned by the application repository; the blog repository only syncs objects into BlogBucket and invalidates.
+  "/" = technical blog (S3, deployed by the separate blog repository), "/app/*" = Web / PWA client (S3),
+  "/api/*" = HTTP API, "/ws" = WebSocket API.
+  Owned by the application repository; the blog repository only syncs objects into BlogBucket and invalidates,
+  and the web client deploy only syncs objects into AppBucket and invalidates /app/*.
 
 Parameters:
   EnvName:
@@ -29,9 +31,22 @@ Parameters:
       owner@ownerId/repo@repoId (see gh api repos/OWNER/REPO/actions/oidc/customization/sub), otherwise owner/repo.
       Empty = no blog deploy role.
 
+  TransferBucketDomain:
+    Type: String
+    Description: >-
+      Regional domain of the transfer bucket (backend output). The Web client PUTs/GETs chunks there with presigned
+      URLs, so it must be in the CSP connect-src.
+  GitHubAppRepo:
+    Type: String
+    Default: ""
+    Description: >-
+      Application repository (this repo) as it appears in the GitHub OIDC sub claim (owner/repo, or
+      owner@ownerId/repo@repoId with immutable subjects). Empty = no web client deploy role.
+
 Conditions:
   HasDomain: !Not [!Equals [!Ref AppDomainName, ""]]
   HasBlogRepo: !Not [!Equals [!Ref GitHubBlogRepo, ""]]
+  HasAppRepo: !Not [!Equals [!Ref GitHubAppRepo, ""]]
 
 Resources:
   BlogBucket:
@@ -182,6 +197,87 @@ Resources:
           return req;
         }
 
+  # ---------- Web / PWA Client（/app/*, ADR-0015） ----------
+  # Blog とはバケットもデプロイロールも分け、どちらか片方のデプロイがもう片方に触れないようにする
+  AppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub tsute-${EnvName}-webapp-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+
+  AppOac:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub tsute-${EnvName}-webapp
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  AppBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AppBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub "${AppBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  # "/app" → "/app/"（manifest の scope・Service Worker の scope を /app/ に揃えるため）、"/app/" → index.html。
+  # オブジェクトはバケット内でも app/ 配下に置く（パスを書き換えずに済む）
+  AppIndexFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub tsute-${EnvName}-app-index
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Redirect /app to /app/ and serve index.html for /app/
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var req = event.request;
+          if (req.uri === '/app') {
+            return { statusCode: 301, statusDescription: 'Moved Permanently', headers: { location: { value: '/app/' } } };
+          }
+          if (req.uri.endsWith('/')) {
+            req.uri = req.uri + 'index.html';
+          }
+          return req;
+        }
+
+  # CSP は App だけに付ける（Blog の外部埋め込み等を縛らないため）。インライン script・外部 CDN・Analytics を
+  # 一切使わない前提で 'self' に限定し、presigned URL の転送バケットだけを connect-src に加える
+  AppHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub tsute-${EnvName}-webapp
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            Override: true
+            ContentSecurityPolicy: !Sub >-
+              default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://${TransferBucketDomain};
+              img-src 'self' blob: data:; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none';
+              form-action 'self'; frame-ancestors 'none'
+          ContentTypeOptions: { Override: true }
+          FrameOptions: { FrameOption: DENY, Override: true }
+          ReferrerPolicy: { ReferrerPolicy: no-referrer, Override: true }
+          StrictTransportSecurity: { AccessControlMaxAgeSec: 63072000, IncludeSubdomains: false, Override: true }
+
   Distribution:
     Type: AWS::CloudFront::Distribution
     # cfn-lint は CertificateArn の既定値 "" で ARN 形式を検査するが、その値は HasDomain が真のとき
@@ -210,6 +306,10 @@ Resources:
             DomainName: !GetAtt BlogBucket.RegionalDomainName
             OriginAccessControlId: !GetAtt BlogOac.Id
             S3OriginConfig: { OriginAccessIdentity: "" }
+          - Id: webapp
+            DomainName: !GetAtt AppBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt AppOac.Id
+            S3OriginConfig: { OriginAccessIdentity: "" }
           - Id: http-api
             DomainName: !Ref HttpApiDomain
             CustomOriginConfig: { OriginProtocolPolicy: https-only, OriginSSLProtocols: [TLSv1.2] }
@@ -230,6 +330,24 @@ Resources:
             - EventType: origin-response
               LambdaFunctionARN: !Ref BlogNotFoundVersion
         CacheBehaviors:
+          # "/app*" にすると Blog の "/apple..." 等まで奪うため、"/app" と "/app/*" を個別に定義する
+          - PathPattern: /app
+            TargetOriginId: webapp
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt AppIndexFunction.FunctionARN
+          - PathPattern: /app/*
+            TargetOriginId: webapp
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            # オリジンの Cache-Control（deploy-web.sh がファイル種別ごとに付与）に従う
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
+            ResponseHeadersPolicyId: !Ref AppHeadersPolicy
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt AppIndexFunction.FunctionARN
           - PathPattern: /api/*
             TargetOriginId: http-api
             ViewerProtocolPolicy: https-only
@@ -277,7 +395,43 @@ Resources:
                 Action: cloudfront:CreateInvalidation
                 Resource: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
 
+  # Web Client の CI 用。App バケットへの同期と /app/* の invalidation だけを許可する
+  AppWebDeployRole:
+    Type: AWS::IAM::Role
+    Condition: HasAppRepo
+    Properties:
+      RoleName: !Sub tsute-${EnvName}-github-web-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubAppRepo}:environment:${EnvName}
+      Policies:
+        - PolicyName: tsute-web-deploy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: [s3:PutObject, s3:DeleteObject, s3:GetObject]
+                Resource: !Sub "${AppBucket.Arn}/app/*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt AppBucket.Arn
+              - Effect: Allow
+                Action: cloudfront:CreateInvalidation
+                Resource: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
 Outputs:
+  AppWebDeployRoleArn:
+    Condition: HasAppRepo
+    Value: !GetAtt AppWebDeployRole.Arn
+  AppBucketName:
+    Value: !Ref AppBucket
   BlogDeployRoleArn:
     Condition: HasBlogRepo
     Value: !GetAtt BlogDeployRole.Arn
