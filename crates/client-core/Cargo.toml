@@ -1,0 +1,32 @@
+[package]
+name = "tsute-client-core"
+description = "つて クライアントのOS非依存コア（認証・通知・転送エンジン・ローカル状態）"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+tsute-proto = { path = "../proto" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.13", features = ["json"] }
+tokio-tungstenite = { version = "0.30", features = ["native-tls"] }
+futures-util = "0.3"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+base64 = "0.22"
+sha2 = "0.10"
+rusqlite = { version = "0.40", features = ["bundled"] }
+thiserror = "2"
+tracing = "0.1"
+url = "2"
+zeroize = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+
+[dev-dependencies]
+tsute-server-local = { path = "../server-local" }
+tsute-server-core = { path = "../server-core" }
+tempfile = "3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

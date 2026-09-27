@@ -1,0 +1,247 @@
+{
+  "legend": {
+    "todo": "未着手",
+    "in_progress": "実装中/一部検証",
+    "done": "実装・テスト・実フロー確認・文書化済み"
+  },
+  "features": [
+    {
+      "id": "scaffold",
+      "area": "infra-dev",
+      "title": "Repository / workspace scaffolding",
+      "status": "done",
+      "notes": "cargo workspace: proto, server-core, server-local, client-core, desktop"
+    },
+    {
+      "id": "progress-docs",
+      "area": "infra-dev",
+      "title": "進捗管理基盤 (PROGRESS/features/ADR/TESTING)",
+      "status": "done",
+      "notes": ""
+    },
+    {
+      "id": "local-devserver",
+      "area": "infra-dev",
+      "title": "ローカル開発サーバー (API/WS/presigned blob を1プロセスで再現)",
+      "status": "done",
+      "notes": "crates/server-local"
+    },
+    {
+      "id": "cloud-infra",
+      "area": "cloud",
+      "title": "AWS Serverless インフラ (CloudFront/HTTP API/WS API/Lambda/DynamoDB/S3)",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "cloud-deploy",
+      "area": "cloud",
+      "title": "実 AWS へのデプロイと疎通確認",
+      "status": "todo",
+      "notes": "AWS 認証情報が必要"
+    },
+    {
+      "id": "enrollment",
+      "area": "auth",
+      "title": "Endpoint enrollment (一回限り・短時間 Enrollment Key, IAM 保護の発行経路)",
+      "status": "in_progress",
+      "notes": "server/client ロジックとローカル結合テスト済み。IAM 発行経路は未実装"
+    },
+    {
+      "id": "endpoint-auth",
+      "area": "auth",
+      "title": "Endpoint 認証 (Ed25519 challenge/response → 短期アクセストークン)",
+      "status": "in_progress",
+      "notes": "ローカル結合テスト済み。AWS 未検証"
+    },
+    {
+      "id": "credential-storage",
+      "area": "auth",
+      "title": "秘密鍵を macOS Keychain に保存",
+      "status": "in_progress",
+      "notes": "実装済み・アプリでの実機確認未"
+    },
+    {
+      "id": "multi-profile",
+      "area": "desktop",
+      "title": "複数 profile (設定/鍵/DB/受信先の分離)",
+      "status": "in_progress",
+      "notes": "client-core で分離済み。デスクトップ同時起動は PoC で確認"
+    },
+    {
+      "id": "multi-instance",
+      "area": "desktop",
+      "title": "同一 Mac で複数 Endpoint 同時起動 + Tray で識別",
+      "status": "in_progress",
+      "notes": "PoC でメニューバーに profile 名表示を確認"
+    },
+    {
+      "id": "endpoint-list",
+      "area": "core",
+      "title": "Endpoint 一覧 + online/offline",
+      "status": "in_progress",
+      "notes": "ローカル結合テスト済み"
+    },
+    {
+      "id": "websocket",
+      "area": "core",
+      "title": "WebSocket 接続・通知・keepalive・再接続",
+      "status": "in_progress",
+      "notes": "ローカル結合テスト（強制切断→再接続）済み。AWS 未検証"
+    },
+    {
+      "id": "clip-text",
+      "area": "clipboard",
+      "title": "Clipboard Text 送信 (inline / 大きい場合は Object)",
+      "status": "in_progress",
+      "notes": "core のみ"
+    },
+    {
+      "id": "clip-image",
+      "area": "clipboard",
+      "title": "Clipboard Image 送信 (PNG 正規化, 幅高さ)",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "clip-video",
+      "area": "clipboard",
+      "title": "Clipboard Video 送信 (file URL / 実データ双方)",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "clip-preview",
+      "area": "clipboard",
+      "title": "送信前プレビュー・確認画面",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "clip-apply",
+      "area": "clipboard",
+      "title": "受信 Clipboard の明示的反映 / ファイル保存",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "file-drop-single",
+      "area": "files",
+      "title": "Single File Drop",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "file-drop-multi",
+      "area": "files",
+      "title": "Multiple File Drop",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "file-confirm",
+      "area": "files",
+      "title": "File 確認画面 (名前/パス/各サイズ/数/合計/送信先)",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "object-transfer",
+      "area": "transfer",
+      "title": "Object Storage 経由の転送",
+      "status": "in_progress",
+      "notes": "ローカル結合テスト済み"
+    },
+    {
+      "id": "chunk-transfer",
+      "area": "transfer",
+      "title": "大容量 chunk 転送 (独立 Object, 並列)",
+      "status": "in_progress",
+      "notes": "ローカル結合テスト済み"
+    },
+    {
+      "id": "overlap",
+      "area": "transfer",
+      "title": "Upload / Download overlap",
+      "status": "in_progress",
+      "notes": "ローカル結合テストで確認（送信中に受信側が取得開始）"
+    },
+    {
+      "id": "progress",
+      "area": "transfer",
+      "title": "Progress 表示",
+      "status": "todo",
+      "notes": "イベントは core にあり。UI 未"
+    },
+    {
+      "id": "resume",
+      "area": "transfer",
+      "title": "Resume / retry / 再起動後再開 / chunk 再取得 / checksum",
+      "status": "in_progress",
+      "notes": "ローカル結合テスト: 送信側 kill→再開, 受信側 kill→再開, 改ざん検出, 一時障害リトライ"
+    },
+    {
+      "id": "cleanup",
+      "area": "transfer",
+      "title": "完了時削除 + Lifecycle + 期限",
+      "status": "in_progress",
+      "notes": "完了/取消時の削除は実装済み。S3 Lifecycle は IaC で"
+    },
+    {
+      "id": "notification",
+      "area": "desktop",
+      "title": "OS 通知",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "tray",
+      "area": "desktop",
+      "title": "Menu Bar 常駐 (Open/状態/最近の受信/Settings/Quit)",
+      "status": "in_progress",
+      "notes": "PoC"
+    },
+    {
+      "id": "window-lifecycle",
+      "area": "desktop",
+      "title": "Close で WebView 破棄・バックグラウンド継続",
+      "status": "in_progress",
+      "notes": "PoC"
+    },
+    {
+      "id": "autostart",
+      "area": "desktop",
+      "title": "ログイン時自動起動 (hidden)",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "ci",
+      "area": "cicd",
+      "title": "GitHub Actions CI (build/test)",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "cd-backend",
+      "area": "cicd",
+      "title": "Backend CD (OIDC + 最小権限 Role)",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "blog-repo",
+      "area": "blog",
+      "title": "Blog リポジトリ (Astro) と独立 CI/CD",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "e2e-macos",
+      "area": "test",
+      "title": "macOS 上の 2 Endpoint E2E (実アプリ操作)",
+      "status": "todo",
+      "notes": ""
+    }
+  ]
+}
