@@ -4,7 +4,7 @@
 
 ## 現在地
 
-**Phase 1 完了地点で停止中（ユーザーの実機確認待ち）。** 詳細は docs/PHASE1_REPORT.md。
+**Phase 1 完了。2026-09-27 にユーザーが .app（default / test-b）で実機の動作を確認した。** 詳細は docs/PHASE1_REPORT.md。
 test 環境（AWS 444369845617 / ap-northeast-1）にデプロイ済み。**クラウド経由 E2E 14/14 PASS**。
 Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
@@ -22,7 +22,7 @@ Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
 ## 次にやること
 
-1. **[ユーザー待ち]** Phase 1 の実機確認（docs/PHASE1_REPORT.md の手順）
+1. **[ユーザー判断待ち]** Phase 2（Windows）の着手、GitHub リポジトリの作成（CI/CD の実行）
 2. chunk size / 並列数の実回線ベンチ
 3. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
    メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
