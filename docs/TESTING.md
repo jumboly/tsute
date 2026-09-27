@@ -60,3 +60,17 @@ open target/release/bundle/macos/Tsute.app --args --profile test-a   # 別プロ
 ```
 
 OS 通知とログイン項目（SMAppService）は .app として起動した場合のみ有効。
+
+## 6. カスタムドメインの設定（環境ごと）
+
+ドメイン名はリポジトリに書かず、`infra/env/<env>.env`（gitignore 済み）にだけ置く。
+
+```sh
+infra/request-cert.sh <fqdn>                 # us-east-1 に ACM 証明書を要求
+# infra/env/<env>.env に TSUTE_APP_DOMAIN と TSUTE_CERT_ARN を設定
+infra/route53-subdomain.sh <env>             # 親ゾーンが CNAME 検証を拒否する場合: Route 53 に委任（NS を表示）
+# ユーザーが親ゾーンに NS（または検証用 CNAME + CNAME）を追加 → 証明書が ISSUED になるのを待つ
+infra/deploy.sh <env>                        # CloudFront に Alias と証明書を設定
+infra/route53-subdomain.sh <env>             # 委任している場合: CloudFront への ALIAS を更新
+python3 e2e/run_e2e.py --target cloud --env <env>   # 独自ドメイン経由で E2E
+```

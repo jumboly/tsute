@@ -70,5 +70,7 @@ JSON
 echo "==> Done"
 echo "APP_BASE_URL=${APP_BASE_URL}"
 if [[ -n "${TSUTE_APP_DOMAIN:-}" ]]; then
+  # 親ゾーンに直接 CNAME を置くか、Route 53 に委任するか（infra/route53-subdomain.sh）は DNS 事業者次第
   echo "外部 DNS に次の CNAME が必要です: ${TSUTE_APP_DOMAIN}  CNAME  ${DIST_DOMAIN}"
+  echo "  （Route 53 に委任している場合は infra/route53-subdomain.sh ${ENV_NAME} で ALIAS を更新する）"
 fi

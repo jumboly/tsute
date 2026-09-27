@@ -219,10 +219,15 @@ def run_all(args, server, work, apps):
             C.quit()
     single_use()
 
-    @step("endpoint list shows peer online")
-    def endpoints():
+    # 送信先は毎回明示的に B を選ぶ。A の再起動で選択が初期値に戻り、クラウドに E2E 以外の Endpoint
+    # （ユーザーの実機など）が登録されていると、テストデータがそちらへ送られてしまうため
+    def select_b():
         A.wait(lambda: A.js("return [...document.querySelectorAll('#target option')].some(o => o.textContent.includes('" + name_b + "'))"), "B in A's targets")
         A.js("const s = document.getElementById('target'); s.value = [...s.options].find(o => o.textContent.includes('" + name_b + "')).value; return 1")
+
+    @step("endpoint list shows peer online")
+    def endpoints():
+        select_b()
         return A.js("return [...document.querySelectorAll('#target option')].map(o => o.textContent).join(', ')")
     endpoints()
 
@@ -402,7 +407,7 @@ def run_all(args, server, work, apps):
         assert B.cmd(cmd="unread") == 0, "badge should be clear after the window was shown"
         assert B.proc.poll() is None, "process must keep running after window close"
         B.wait(lambda: A.js("return document.body.dataset.connection") == "online", "A online")
-        A.wait(lambda: A.js("return document.querySelectorAll('#target option:not([disabled])').length > 0"), "targets")
+        select_b()
         pbcopy("received while window closed")
         A.click("send-clipboard")
         A.wait(lambda: A.view() == "clip", "preview")

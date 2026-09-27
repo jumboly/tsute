@@ -7,6 +7,9 @@
 **Phase 1 完了。2026-09-27 にユーザーが .app（default / test-b）で実機の動作を確認した。**
 OS 通知は ad-hoc 署名では不可のため、メニューバーの未確認印で代替（ADR-0014, 実機確認済み）。 詳細は docs/PHASE1_REPORT.md。
 test 環境（AWS 444369845617 / ap-northeast-1）にデプロイ済み。**クラウド経由 E2E 14/14 PASS**。
+**2026-09-27 test 環境に独自ドメインを設定**（値は `infra/env/test.env` のみ。リポジトリに書かない）。
+アプリ用サブドメインを Route 53 に委任（親ゾーンの DNS 事業者が ACM 検証用 CNAME を拒否したため, ADR-0009）。
+独自ドメイン経由のクラウド E2E 14/14 PASS（2 回連続）。
 Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
 **Web / PWA 追加要件を受領（2026-09-27）。** 原文 `docs/requirements/web-pwa.md`、要約 REQUIREMENTS.md、
@@ -43,6 +46,11 @@ Phase 2（Windows）はユーザーの指示があるまで着手しない。
 - 通知: authorization granted=false（要手動許可・表示確認）
 
 ## 既知の問題 / 注意
+
+- 独自ドメイン設定直後のクラウド E2E で「Video（file URL）のプレビュー待ちタイムアウト」が 2 回続いた。
+  サーバー通信を伴わない手順で、E2E 修正後の 2 回は再現しなかった。原因は未特定（実行中の Clipboard 操作との
+  干渉を疑う）。再発したら `--keep` でログを残して調べる。
+- 登録済みの Mac の Endpoint は旧 `*.cloudfront.net` の URL のままでも動く。独自ドメインへの切り替えは任意。
 
 - AWS CLI のセッション期限切れ（`aws login` が必要）。
 - Accessibility 権限がないため System Events による UI 自動操作は不可 → アプリ内オートメーション（ADR-0013）。
