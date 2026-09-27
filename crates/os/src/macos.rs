@@ -363,8 +363,11 @@ pub fn init_notifications(on_click: impl Fn(String) + Send + Sync + 'static) -> 
     let d = delegate::NotificationDelegate::new(mtm);
     center.setDelegate(Some(ProtocolObject::from_ref(&*d)));
     DELEGATE.with(|cell| *cell.borrow_mut() = Some(d));
-    let block = block2::RcBlock::new(|granted: objc2::runtime::Bool, _err: *mut objc2_foundation::NSError| {
-        tracing::info!(granted = granted.as_bool(), "notification authorization");
+    let block = block2::RcBlock::new(|granted: objc2::runtime::Bool, err: *mut objc2_foundation::NSError| {
+        // 拒否理由（未署名・設定で拒否など）を切り分けられるようエラー内容も記録する
+        let err = unsafe { err.as_ref() }
+            .map(|e| format!("{} (domain={}, code={})", e.localizedDescription(), e.domain(), e.code()));
+        tracing::info!(granted = granted.as_bool(), error = ?err, "notification authorization");
     });
     center.requestAuthorizationWithOptions_completionHandler(
         UNAuthorizationOptions::Alert | UNAuthorizationOptions::Sound,
