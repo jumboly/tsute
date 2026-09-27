@@ -162,8 +162,9 @@ pub struct WsTicketResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushConfig {
-    /// VAPID 公開鍵（非圧縮 P-256 点, base64url no pad）。`PushManager.subscribe` の applicationServerKey
-    pub vapid_public_key: String,
+    /// VAPID 公開鍵（非圧縮 P-256 点, base64url no pad）。`PushManager.subscribe` の applicationServerKey。
+    /// None = この環境では Web Push が無効（異常ではないので 404 にせず 200 で返す）
+    pub vapid_public_key: Option<String>,
 }
 
 /// Push Subscription。Payload を載せない（ADR-0015）ため暗号鍵（p256dh/auth）は受け取らない。

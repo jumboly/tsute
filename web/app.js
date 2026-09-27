@@ -600,8 +600,8 @@ async function renderPush() {
     return;
   }
   let cfg = null;
-  try { cfg = await api.pushConfig(); } catch { /* 404 = サーバー側で無効 */ }
-  if (!cfg) {
+  try { cfg = await api.pushConfig(); } catch { /* 通信失敗時は無効として扱う */ }
+  if (!cfg?.vapid_public_key) {
     $("push-status").textContent = "この環境では Web Push が無効です。次に開いたときに未受信を取得します。";
     btn.hidden = true;
     return;

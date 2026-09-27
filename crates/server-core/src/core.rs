@@ -330,10 +330,12 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
                     ("PUT", ["api", "me", "name"]) => self.rename(&me, parse(&req.body)?).await,
                     ("PUT", ["api", "me", "capabilities"]) => self.set_capabilities(&me, parse(&req.body)?).await,
                     ("POST", ["api", "ws-ticket"]) => self.ws_ticket(&me).await,
-                    ("GET", ["api", "push", "config"]) => match self.pusher.vapid_public_key() {
-                        Some(k) => Ok(Response::json(200, &PushConfig { vapid_public_key: k })),
-                        None => Err(ApiErr::new(404, "push_disabled", "web push is not configured")),
-                    },
+                    ("GET", ["api", "push", "config"]) => Ok(Response::json(
+                        200,
+                        &PushConfig {
+                            vapid_public_key: self.pusher.vapid_public_key(),
+                        },
+                    )),
                     ("PUT", ["api", "push", "subscription"]) => self.put_push(&me, parse(&req.body)?).await,
                     ("DELETE", ["api", "push", "subscription"]) => self.delete_push(&me, parse(&req.body)?).await,
                     ("GET", ["api", "endpoints"]) => Ok(Response::json(

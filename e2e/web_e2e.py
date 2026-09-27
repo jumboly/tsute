@@ -296,6 +296,8 @@ def run(pw, engine, server, headed):
         c = b.card("オフライン中に送ったテキスト")
         expect(c).to_be_visible(timeout=15000)
         c.get_by_role("button", name="閉じる").click()
+        # received の POST 完了後にカードが消える。完了前にリロードすると中断されて再表示されるため待つ
+        expect(c).to_have_count(0, timeout=15000)
         b.reload()
         expect(b.page.locator("#view-main")).to_be_visible(timeout=15000)
         time.sleep(1.5)

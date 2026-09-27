@@ -81,7 +81,7 @@ Mac での確認手順・必要な外部 DNS 設定）して **停止**。Phase 
 
 ## Web / PWA Client（追加要件, 2026-09-27）
 
-原文: `docs/requirements/web-pwa.md` / 技術方針: ADR-0015（Proposed）。
+原文: `docs/requirements/web-pwa.md` / 技術方針: ADR-0015（Accepted）。実装: `web/`（`/app/` で配信）。
 
 - Native の代替ではない。主用途: スマホ → PC へ Text（特に **OS キーボードの音声入力**）、Browser の Text/Image 送信、
   未インストール環境からの一時利用、PWA として素早く起動。

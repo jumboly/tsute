@@ -14,8 +14,12 @@ Blog リポジトリの GitHub Actions デプロイ（OIDC）が成功し、独�
 Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 404）を返す。API のエラー JSON は不変（確認済み）。
 Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
-**Web / PWA 追加要件を受領（2026-09-27）。** 原文 `docs/requirements/web-pwa.md`、要約 REQUIREMENTS.md、
-方針 ADR-0015（Proposed）、機能一覧 features.json の `phase: "W"`。実装は未着手。
+**Phase W（Web / PWA）実装済み・スマホ実機確認待ち（2026-09-27）。** ユーザー指示で Windows より先に着手。
+ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pwa.md`、機能一覧 features.json の `phase: "W"`。
+- test 環境にデプロイ済み（Backend / Edge / `/app/`）。クラウド Web E2E 26/26（Chromium・WebKit、2 回連続）、
+  Native ↔ Web 7/7、既存デスクトップ E2E 14/14（回帰なし）。ローカルも同じく全通過。
+- **Web Push は test 環境で未有効**: VAPID 鍵を SSM に書く `infra/vapid.sh test` がエージェントの権限で拒否されたため、
+  ユーザーが実行する（その後 `infra/deploy.sh test` で API 関数に読み込ませる）。鍵が無い間は「次に開いたときに回収」で動く。
 
 ### できていること
 - Rust workspace: proto / server-core / server-local / server-lambda / client-core / os / desktop
@@ -31,16 +35,18 @@ Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
 ## 次にやること
 
-1. **[ユーザー判断待ち]** 次の Phase を Windows（Phase 2）と Web / PWA（Phase W）のどちらにするか。
-   GitHub リポジトリの作成（CI/CD の実行）
-   - Phase W 着手時は最初に ADR-0015「着手時に再確認する事項」を調査し、ADR を Accepted にしてから実装する。
-2. chunk size / 並列数の実回線ベンチ
-3. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
+1. **[ユーザー作業]** `infra/vapid.sh test` → `infra/deploy.sh test`（Web Push の有効化）
+2. **[ユーザー実機確認]** docs/TESTING.md §7 のスマホ手順（iPhone PWA: 登録・再起動後も同一 Endpoint・音声入力 → Send →
+   Mac で受信・Push 通知・機内モード後の回収、Android: Share Target、Firefox: Paste 経路）。結果で features.json を done に
+3. Phase 2（Windows）はユーザーの指示があるまで着手しない。
+   GitHub リポジトリの作成（CI/CD の実行。`web-e2e` ジョブと `deploy-web.yml` を追加済み・未実行）
+4. chunk size / 並列数の実回線ベンチ
+5. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
    メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
-4. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行。作成したら
+6. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行。作成したら
    `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` を確認し、immutable subject が有効なら
    bootstrap の `GitHubAppRepo` を `owner@ownerId/repo@repoId` 形式で更新する（ADR-0010。Blog ロールで実際に踏んだ）
-5. Phase 1 完了報告
+7. Phase 1 完了報告
 
 ## .app 統合チェック結果（2026-09-27, e2e/out/app-checks.json）
 
@@ -50,6 +56,14 @@ Phase 2（Windows）はユーザーの指示があるまで着手しない。
 - 通知: authorization granted=false（要手動許可・表示確認）
 
 ## 既知の問題 / 注意
+
+- Web: Playwright の WebKit ビルドでは `pushManager.getSubscription()` がページごと固まる。通知許可が無いときは
+  pushManager に触れない実装にして回避（許可が無ければ有効な購読は存在しないため、実 Safari でも妥当）。
+- Web: 受信は Copy / 保存 / 共有 / 閉じる で received になる。操作直後にページを閉じると POST が中断され、
+  次回また表示されることがある（安全側）。
+- Web: 画像の Clipboard 書き込みに対応しない Browser では「保存」「共有…」を使う。
+- 既存の Mac の .app（旧ビルド）は accepts を知らないため、Web 宛に動画・ファイルを選ぶと送信時にサーバーが
+  422 で拒否する（確認画面での理由表示は再ビルド後）。
 
 - 独自ドメイン設定直後のクラウド E2E で「Video（file URL）のプレビュー待ちタイムアウト」が 2 回続いた。
   サーバー通信を伴わない手順で、E2E 修正後の 2 回は再現しなかった。原因は未特定（実行中の Clipboard 操作との
@@ -67,6 +81,11 @@ Phase 2（Windows）はユーザーの指示があるまで着手しない。
 - Lambda のクロスビルドは `CARGO_TARGET_DIR=target/lambda-build`（ホストの release 成果物との衝突回避）。
 
 ## 判断ログ（ADR 化しない小さなもの）
+
+- Web Client はビルドなし ES Modules（npm 依存ゼロ）。proto との整合は実サーバー相手の Playwright E2E で担保（ADR-0015 §1）。
+- Web Push は空 Payload（暗号化不要・内容が push service に渡らない）。`/api/push/config` は無効時も 200 + null。
+- Push Subscription の上限超過時の「古い順」はマイクロ秒の登録時刻で決める（秒・ミリ秒では同着が出た）。
+- `e2e/__pycache__` の追跡をやめ .gitignore に追加。
 
 - ed25519-dalek は 2.x（3.0 はリリース直後で rand 0.8 系との互換を優先）。
 - UI はビルド工程なしの素の HTML/CSS/JS。受信内容は textContent のみで表示（XSS 防止）。

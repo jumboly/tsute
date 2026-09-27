@@ -36,10 +36,12 @@ impl BlobStore for NoBlob {
 struct RecPusher {
     sent: Arc<Mutex<Vec<String>>>,
     gone: Arc<Mutex<Vec<String>>>,
+    /// VAPID 未設定の環境を模す
+    disabled: bool,
 }
 impl Pusher for RecPusher {
     fn vapid_public_key(&self) -> Option<String> {
-        Some("BPUBKEY".into())
+        (!self.disabled).then(|| "BPUBKEY".into())
     }
     async fn push(&self, url: &str) -> CoreResult<PushOutcome> {
         self.sent.lock().unwrap().push(url.into());
@@ -482,4 +484,28 @@ async fn push_rejects_disallowed_url_and_disabled_config() {
     assert_eq!(v["vapid_public_key"], "BPUBKEY");
     let (s, _) = req(&c, "GET", "/api/push/config", None, serde_json::Value::Null).await;
     assert_eq!(s, 401, "config requires auth");
+    // VAPID 未設定の環境では null（クライアントは Push の UI を出さない）
+    let c0 = Core::new(
+        MemoryStore::default(),
+        NoBlob,
+        ChannelNotifier::default(),
+        Config::default(),
+    )
+    .with_pusher(RecPusher {
+        disabled: true,
+        ..Default::default()
+    });
+    let (_w0, tw0) = endpoint(&c0, "Web", web()).await;
+    let (s, v) = req(&c0, "GET", "/api/push/config", Some(&tw0), serde_json::Value::Null).await;
+    assert_eq!(s, 200);
+    assert!(v["vapid_public_key"].is_null());
+    let (s, _) = req(
+        &c0,
+        "PUT",
+        "/api/push/subscription",
+        Some(&tw0),
+        serde_json::json!({"endpoint": "https://fcm.googleapis.com/x"}),
+    )
+    .await;
+    assert_eq!(s, 404, "subscription cannot be stored when push is disabled");
 }

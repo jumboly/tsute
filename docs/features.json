@@ -249,128 +249,128 @@
       "area": "infra-dev",
       "title": "/app/ 配信（edge に path behavior + App バケット + App 専用 CI ロール、独立デプロイ）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "done",
+      "notes": "edge に /app・/app/* ビヘイビア + App バケット + CSP、App 専用デプロイロール（HasAppRepo 時）。infra/deploy-web.sh で Web だけ独立デプロイ。test 環境で配信・ヘッダ・Blog 不変を確認"
     },
     {
       "id": "web-capability-model",
       "area": "auth",
       "title": "Capability Model（accepts / reach、送信可否判定とサーバー側強制）— ADR-0015",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "done",
+      "notes": "accepts（自己申告）/ reach（WS・Push の実状態から導出）。create_transfer で 422 receiver_cannot_accept。Native UI も確認画面で理由表示。web_rules・web_native_e2e で確認"
     },
     {
       "id": "web-enrollment",
       "area": "auth",
       "title": "Web Endpoint Enrollment（Web Crypto Ed25519 非抽出鍵 + IndexedDB）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "in_progress",
+      "notes": "Chromium/WebKit の E2E（ローカル・test 環境）で確認済み（Key 再利用拒否、再 Open 後も同じ Endpoint）。スマホ実機は手動確認待ち"
     },
     {
       "id": "web-auth",
       "area": "auth",
       "title": "Web の challenge/response 認証（トークンはメモリのみ、Cookie 不使用）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "done",
+      "notes": "トークンはメモリのみ・Cookie 不使用。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み"
     },
     {
       "id": "web-ws-ticket",
       "area": "realtime",
       "title": "Browser 向け WS 認証（一回限り ticket を Sec-WebSocket-Protocol で渡す）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "done",
+      "notes": "POST /api/ws-ticket（TTL 30 秒・一回限り）+ Sec-WebSocket-Protocol echo。CloudFront 経由でも接続できることを test 環境の E2E で確認"
     },
     {
       "id": "web-endpoint-list",
       "area": "ui",
       "title": "Endpoint 一覧・送信先選択（受信不可な送信先は理由表示）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "done",
+      "notes": "受信不可な送信先は選択不可で理由表示。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み"
     },
     {
       "id": "web-text-input",
       "area": "ui",
       "title": "Text 入力（キーボード / Paste / OS 音声入力）→ Preview → Send",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "in_progress",
+      "notes": "入力 / Paste → Preview → 確認 → Send。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。OS キーボード音声入力はスマホ実機で手動確認待ち"
     },
     {
       "id": "web-clip-read",
       "area": "ui",
       "title": "Clipboard から読み込み（Async Clipboard API, 対応時のみ）と Paste 経路",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "in_progress",
+      "notes": "Async Clipboard（ボタン操作内のみ）と Paste 経路。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。Safari / Firefox の Paste 確認 UI は実機確認待ち"
     },
     {
       "id": "web-clip-image",
       "area": "transfer",
       "title": "Image Clipboard 送受信（PNG 正規化、Preview/形式/解像度/サイズ、presigned S3 + CORS）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "in_progress",
+      "notes": "PNG 正規化（他形式は canvas 変換）、presigned S3 + CORS（App オリジンのみ）。Web↔Web・Web↔Native とも Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。実機確認待ち"
     },
     {
       "id": "web-receive",
       "area": "ui",
       "title": "Text/Image 受信表示・明示的 Copy / 保存 / Dismiss（自動反映しない）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "in_progress",
+      "notes": "コピー / 保存 / 共有 / 閉じる で received。操作まで Backend に残る。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。実機確認待ち"
     },
     {
       "id": "web-pwa",
       "area": "ui",
       "title": "PWA（manifest / icons / standalone / Service Worker / installability）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "in_progress",
+      "notes": "manifest / icons（maskable・apple-touch-icon）/ standalone / SW（scope /app/, App Shell のみキャッシュ）。ホーム画面への追加と起動は実機確認待ち"
     },
     {
       "id": "web-ws-foreground",
       "area": "realtime",
       "title": "Foreground 時の WebSocket 通知と再同期",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "done",
+      "notes": "hidden で自ら切断、visible で再接続＋再同期。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み"
     },
     {
       "id": "web-push",
       "area": "realtime",
       "title": "Web Push（VAPID、Subscription 所有権、WS 不在時のみ送信、本文なし Payload）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "in_progress",
+      "notes": "空 Payload + VAPID（ES256）、WS で届かなかったときだけ送信、SSRF 許可リスト、410 で削除。web_rules で確認。test 環境の VAPID 鍵は未作成（infra/vapid.sh test をユーザーが実行）。実機での通知表示は未確認"
     },
     {
       "id": "web-offline-recovery",
       "area": "transfer",
       "title": "Offline 後・起動時の未受信 Transfer 回収",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "done",
+      "notes": "閉じている間の送信を再 Open 時に回収、未操作ならリロードでも残る。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み"
     },
     {
       "id": "web-share-target",
       "area": "ui",
       "title": "Web Share Target（Android / Chromium のみ、Progressive Enhancement）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "in_progress",
+      "notes": "manifest share_target（POST multipart）を SW が受けて Preview へ。E2E はフォーム POST で模擬。Android 実機は手動確認待ち"
     },
     {
       "id": "web-security",
       "area": "security",
       "title": "Web Security レビュー（CSP / XSS / CSRF / SSRF / ログ）",
       "phase": "W",
-      "status": "todo",
-      "notes": ""
+      "status": "in_progress",
+      "notes": "CSP（'self' + 転送バケットのみ）、textContent 描画、Cookie 不使用、ticket はヘッダ、Push は空 Payload、SSRF 許可リスト、ログに内容を出さない。第三者によるレビューは未実施"
     },
     {
       "id": "web-e2e-device",
@@ -378,7 +378,7 @@
       "title": "スマホ実機 E2E（音声入力 → Send → PC で受信 ほか完了条件一式）",
       "phase": "W",
       "status": "todo",
-      "notes": ""
+      "notes": "docs/TESTING.md §7 の手順。ユーザーの実機確認待ち"
     }
   ]
 }

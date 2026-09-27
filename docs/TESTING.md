@@ -74,3 +74,41 @@ infra/deploy.sh <env>                        # CloudFront に Alias と証明書
 infra/route53-subdomain.sh <env>             # 委任している場合: CloudFront への ALIAS を更新
 python3 e2e/run_e2e.py --target cloud --env <env>   # 独自ドメイン経由で E2E
 ```
+
+## 7. Web / PWA Client（Phase W, ADR-0015）
+
+前提: `pip install playwright && python3 -m playwright install chromium webkit`
+
+```sh
+cargo test -p tsute-server-core --test web_rules             # Capability / WS ticket / Push 条件 / SSRF / 所有権
+python3 e2e/web_e2e.py --target local                        # Web ↔ Web（Chromium・WebKit、各 13 ステップ）
+python3 e2e/web_native_e2e.py --target local                 # Native(.app/debug) ↔ Web（実 OS Clipboard を使う）
+python3 e2e/web_e2e.py --target cloud --env test             # デプロイ済み環境
+```
+
+- `web_e2e.py`: UI からの Enrollment、Key 再利用拒否、Endpoint 一覧（Web / オンライン表示）、Text の即時受信（WS）
+  と明示 Copy、入力だけでは送らないこと、64KiB 超 Text（chunk 転送）、Image（Clipboard 読み込み / Paste、PNG 正規化）、
+  閉じている間に送った Text の再 Open 後の回収（同じ Endpoint のまま・未操作ならリロードでも残る）、
+  受信できない種類の 422 拒否、Share Target（SW 経由で Preview に入るだけ）、manifest / SW scope、CSP・Cookie 不使用。
+  headless Browser の Clipboard は OS から独立している（ユーザーの Clipboard は変わらない）。
+- ローカルで手動確認: `cargo run -p tsute-server-local --bin tsute-devserver` → `http://127.0.0.1:8787/app/`
+  （127.0.0.1 / localhost は secure context なので Web Crypto・SW・Push が使える）。
+
+### デプロイ（独立）
+
+```sh
+infra/vapid.sh <env>          # 初回のみ: VAPID 秘密鍵を SSM SecureString に作成（無ければ Web Push は無効）
+infra/deploy.sh <env>         # Backend / Edge（/app/* のビヘイビア・App バケット・S3 CORS）
+infra/deploy-web.sh <env>     # web/ だけを同期して /app/* を invalidate（Backend・Blog は触らない）
+```
+
+### スマホ実機での確認（自動化できない項目。単に Browser で動いただけでは完了にしない）
+
+1. iPhone Safari で `https://<APP_BASE_URL>/app/` → Enrollment Key で登録 → 共有 →「ホーム画面に追加」→ ホーム画面から起動（standalone）
+2. ホーム画面の PWA を閉じて再度開き、同じ Endpoint 名のまま使える（再登録を求められない）
+3. テキスト欄でキーボードのマイク（音声入力）→ 送信先に Mac を選ぶ → 確認 → Send → Mac で受信・反映
+4. Mac から Text / Image を送る → PWA が前面なら即時表示（WS）→ コピー / 保存（共有 → 画像を保存）
+5. 設定 →「通知を有効にする」→ PWA を閉じる → Mac から送る → 通知（内容は表示されない）→ タップで開いて表示
+6. 機内モード中に Mac から送る → 解除して PWA を開く → 回収される
+7. Android Chrome: インストール → 他アプリの共有メニューで「つて」→ Preview に入る → Send
+8. Firefox / 古い Browser: Clipboard ボタンが無くても 入力 / 貼り付け / Send が機能する

@@ -1,7 +1,7 @@
 # ADR-0015: Web / PWA Client のアーキテクチャと Capability Model
 
-- 状態: **Proposed**（2026-09-27）。Web / PWA Phase の着手時に「着手時に再確認する事項」を調べ、
-  結果を反映して Accepted にする。着手順（Windows / Web のどちらが先か）はユーザー判断。
+- 状態: **Accepted**（2026-09-27）。ユーザーの指示で Phase W に着手し、「着手時に再確認する事項」を調査して
+  下記「着手時の調査結果と確定事項」に反映した。Proposed 時点からの変更点は各節に「（確定）」で記す。
 - 要件原文: `docs/requirements/web-pwa.md`
 
 ## 背景
@@ -16,11 +16,17 @@
 
 ### 1. 配置と独立デプロイ
 
-- Web クライアントは **このリポジトリの `web/`** に置く（Blog とは別）。プロトコル型（`crates/proto`）を
-  共有してクライアント/サーバーの食い違いを防ぐため。型は proto から TypeScript を生成する方向（手書きの二重管理を避ける）。
+- Web クライアントは **このリポジトリの `web/`** に置く（Blog とは別）。プロトコル（`crates/proto`）と同じ
+  リポジトリで変更し、食い違いを CI で検出するため。
+- （確定）**ビルド工程なしの素の ES Modules**（デスクトップ UI と同方針）。TypeScript 生成は採用しない。
+  理由: 依存（npm パッケージ）とビルド成果物を持ち込まず、配布物＝ソースで監査しやすくするため（Clipboard を
+  扱うページの供給網リスクを最小化）。食い違いは `e2e/web_e2e.py`（実サーバー相手の Playwright）が CI で検出する。
+- （確定）App バケットは Blog と別（`tsute-<env>-webapp-*`）。オブジェクトは `app/` 配下に置き、CloudFront の
+  パスをそのままオリジンに渡す。`/app*` ではなく `/app` と `/app/*` の 2 ビヘイビア（Blog の `/apple…` を奪わない）。
+  Cache-Control は deploy 時に種別ごとに付ける（HTML / sw.js / manifest は `no-cache`、他は 5 分）。
 - edge スタックに `/app/*` の CacheBehavior と App 用 S3 バケット（OAC）を追加し、App 用 CI ロールは
   「App バケットへの sync と `/app/*` の invalidation」だけを許可する。Blog / App / Backend はそれぞれ単独でデプロイできる。
-- `/app` → `/app/` はリダイレクト。manifest の `scope` / `start_url` と Service Worker の scope は `/app/`
+- `/app` → `/app/` はリダイレクト（CloudFront Function）。manifest の `scope` / `start_url` と Service Worker の scope は `/app/`
   （Blog 側のページを SW が横取りしないため）。
 - API / WS の URL は `location.origin` からの相対（`/api/`, `wss://<host>/ws`）で導出する。APP_BASE_URL を
   ビルド成果物に埋め込まない（同じ成果物を Test / Prod に配れる）。
@@ -31,7 +37,9 @@
 - 鍵: Web Crypto で `Ed25519` を `extractable: false` で生成し、`CryptoKey` をそのまま IndexedDB に保存する
   （structured clone で非抽出のまま永続化できる。秘密鍵のバイト列は JS から読めない）。
   サーバーの検証ロジックは Native と同一。アルゴリズムを増やさないため Ed25519 に揃える。
-  - 未対応 Browser が主要ターゲットに残る場合のみ ECDSA P-256 の追加を検討する（着手時に判断）。
+  - （確定）ECDSA P-256 は追加しない。Ed25519 は Chrome 137 / Firefox 129 / Safari 17（iOS 17）以降で使え、
+    主要ターゲットを満たす。未対応 Browser では「この Browser では使えません」を表示する。
+    Safari の署名はランダム化（決定的でない）だが、検証は通常の Ed25519 検証で通る。
 - アクセストークンは **メモリのみ** に保持し、起動のたびに challenge/response で取り直す
   （localStorage に置くと XSS 一発で持ち出されるため）。
 - API は `Authorization: Bearer` のみで認証し、**Cookie を使わない**。ambient credential が無いので CSRF が
@@ -83,12 +91,25 @@ Endpoint が持つ能力を 3 種類に分け、「誰がそれを知る必要�
 - VAPID 鍵ペアはスクリプトで生成し、秘密鍵は SSM Parameter Store（SecureString）に置く。リポジトリには入れない。
 - Subscription は認証済み Endpoint に紐付けて保存する（新アイテム `PUSH#<endpoint_id>` / `S#<sha256(endpoint URL)>`）。
   登録・削除は本人のトークンでのみ可能。Endpoint の revoke 時に削除、push service が 404/410 を返したら削除。
-- 送信条件: 受信側 Endpoint に **生きた WS 接続が無いときだけ** Push する（iOS は Push ごとに通知表示が必須のため、
-  前面で WS 通知を受けている時に二重に出さない）。
-- **Payload は内容・種類・サイズを含めない**（`{"t":"transfer_ready"}` のみ）。通知文言も汎用
-  （「新しい受信があります」）。ロック画面での露出を避けるため。本文は通知タップ後に App が API から取得する。
-- SSRF 対策: Subscription の endpoint URL は https かつ既知の push service ホスト
-  （FCM / Apple / Mozilla / WNS 等、着手時に確定）だけを受け付ける。
+- 送信条件: 受信側 Endpoint の WS 接続へ **通知を届けられなかったときだけ** Push する（iOS は Push ごとに通知表示が
+  必須のため、前面で WS 通知を受けている時に二重に出さない）。（確定）判定は「接続レコードの有無」ではなく
+  「実際に送れたか」。切断を検出できていない接続が残っていても Push にフォールバックする。
+  Web Client はページが隠れたら WS を自分から閉じる（半開きの接続で Push が抑止されないように）。
+- （確定）**Payload は空**（ボディなし）。RFC 8291 の暗号化も不要になり、push service・端末に内容も種類も渡らない。
+  空 Payload は Apple / Mozilla / FCM とも受け付ける。通知文言は汎用（「新しい受信があります」）。
+  本文は通知を開いた後に App が API から取得する。Safari は Push を受けたら必ず通知を表示しないと許可を
+  取り消すため、Service Worker は push イベントで常に `showNotification` する。`userVisibleOnly: true`（Chrome 必須）。
+- （確定）VAPID: JWT は ES256、`aud` = push service のオリジン、`exp` = 12 時間、1 時間使い回す（Apple は
+  1 日より先の exp を拒否し、再生成は 1 時間に 1 回までを求める）。`sub` = App のオリジン（https URL。Apple は
+  https / mailto 以外を拒否）。`TTL: 86400`, `Urgency: high`。リダイレクトは追わない（許可リストの迂回防止）。
+  鍵は `infra/vapid.sh` が SSM `/tsute/<env>/vapid-private-key` に作り、API 関数が起動時に読む。無ければ Push 無効で起動し、
+  `GET /api/push/config` は `{"vapid_public_key": null}` を返す（無効は異常ではないので 404 にしない）。
+- （確定）Subscription は単一パーティション `PUSHSUBS` / `P#<endpoint_id>#<sha256(url)>`（CONNS と同じく、
+  reach の導出で全件を 1 Query で読むため）。有効期限 60 日で、App 起動のたびに再登録して延長する。
+  1 Endpoint あたり 5 件まで（Browser が購読を作り直すと古い URL は届かないため、古い順に消す）。
+- SSRF 対策: Subscription の endpoint URL は https・ポート指定なし・userinfo なしで、ホストが
+  `fcm.googleapis.com` / `updates.push.services.mozilla.com` / `*.push.apple.com` / `*.notify.windows.com`
+  （完全一致またはサブドメイン）のものだけを受け付ける。保存時と送信直前の両方で検証する。
 - Permission 要求は必ずユーザーのボタン操作から。iOS / iPadOS はホーム画面に追加した PWA のみ対象。
   Push 不可の環境は「次回起動時の回収」がフォールバック。
 
@@ -100,8 +121,14 @@ Endpoint が持つ能力を 3 種類に分け、「誰がそれを知る必要�
   Image は PNG を基本に正規化し、Preview・形式・幅・高さ・サイズを表示する。
 - **Web Speech API は MVP で使わない**。Chromium の実装は音声をサーバー側で認識しうる（Clipboard 同様に機微な
   内容が第三者に渡る）ため。OS キーボードの音声入力で主要ユースケースは満たせる。将来は明示 opt-in の拡張として検討。
-- Web Share Target は manifest で宣言し、対応環境（Android / Chromium）でのみ動く。共有された内容は
-  送信画面の Preview に入るだけで、送信は通常どおりユーザーの Send。iOS 向けの Workaround は作らない。
+- Web Share Target は manifest で宣言し、対応環境（Android Chrome 76+ / Windows・ChromeOS の Chromium 89+）でのみ動く。
+  Safari（macOS / iOS）・Firefox は非対応。共有された内容は送信画面の Preview に入るだけで、送信は通常どおり
+  ユーザーの Send。iOS 向けの Workaround は作らない。
+  （確定）`POST multipart/form-data` を Service Worker が受け、内容をメモリにだけ保持して（最大 60 秒）
+  303 で `/app/?share=<id>` へ戻し、App が MessageChannel で受け取る。永続ストレージには書かない。
+- （確定）受信した Transfer は、ユーザーが Copy / 保存 / 共有 / 閉じる のいずれかを行った時点で `received` にする。
+  それまでは Backend に残るため、再読み込み・Browser の再起動でも未処理の受信は消えない（Web 側に内容を保存しない
+  ことと両立させるため）。画像の Clipboard 書き込みができない Browser では 保存 / 共有 を使う。
 
 ### 8. Web Security
 
@@ -112,7 +139,27 @@ Endpoint が持つ能力を 3 種類に分け、「誰がそれを知る必要�
   Application Log / Access Log に出さない（既存方針の継続）。
 - Enrollment Key の入力欄は `autocomplete="off"`。リプレイは既存の一回限り消費で防ぐ。
 
-## 着手時に再確認する事項（現時点の理解は要検証）
+## 着手時の調査結果と確定事項（2026-09-27）
+
+一次資料（WebKit Blog、Chrome Developers、MDN browser-compat-data 2026-09-24 版、Apple Developer、AWS ドキュメント）で確認。
+
+| 項目 | 結果 | 反映 |
+|---|---|---|
+| Ed25519（Web Crypto） | Chrome 137 / Firefox 129 / Safari 17。CryptoKey は serializable（IndexedDB に非抽出のまま保存可） | §2。Chromium・WebKit の E2E で保存→再 Open 後の再認証を確認 |
+| Safari の 7 日削除 | ホーム画面の Web アプリは別カウンタで、ファーストパーティのデータは消えない想定。`persist()` は Safari 17+ がヒューリスティック許可、Chrome は自動判定、Firefox はダイアログ | 登録直後に `persist()` を要求し、結果を設定画面に表示 |
+| Async Clipboard | read/write: Chrome 76 / Safari 13.1 / Firefox 127。Safari・Firefox は User Activation 必須で「ペースト」確認 UI が出る | ボタン操作の中だけで呼ぶ。Paste 経路を常に併設 |
+| Web Push | iOS/iPadOS 16.4+ はホーム画面の Web アプリのみ。空 Payload 可。invisible push 不可 | §6。iOS でホーム画面外なら案内文を出す |
+| Share Target | Android Chrome / Windows・ChromeOS の Chromium のみ | §7 |
+| API GW `$connect` のサブプロトコル | Lambda proxy 応答の `headers.Sec-WebSocket-Protocol` が返る（$connect で設定できる唯一のヘッダ）。echo しないと Chrome は接続失敗 | Lambda と devserver で echo |
+| 実装技術 | ビルドなしの ES Modules | §1 |
+
+実機でしか確かめられず、未確認のもの（`docs/TESTING.md` の手動確認項目）:
+1. CloudFront 経由で応答の `Sec-WebSocket-Protocol` がそのまま Browser に届くか（test 環境で確認する）
+2. 空 Payload の Push で iOS のホーム画面 PWA が通知を表示できるか
+3. Firefox の `clipboard.read()` で `image/png` が取れるか（取れなくても Paste 経路で送れる）
+4. macOS の Chrome が Share Target に対応しているか
+
+### Proposed 時点の確認リスト（参考）
 
 - Web Crypto Ed25519 の対応（Chrome / Safari / Firefox、iOS Safari の最低版）と IndexedDB への CryptoKey 保存。
 - Safari の script-writable storage 削除ポリシー（ホーム画面 PWA が対象外か）と `storage.persist()` の挙動。

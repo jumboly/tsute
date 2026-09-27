@@ -162,7 +162,7 @@ pub enum PushOutcome {
 
 /// Web Push の送信（到達手段 `web_push` の Notifier）。Payload は常に空で、内容を push service に渡さない。
 pub trait Pusher: Send + Sync {
-    /// VAPID 公開鍵。None なら Web Push は無効（`/api/push/config` が 404 を返す）
+    /// VAPID 公開鍵。None なら Web Push は無効（`/api/push/config` が null を返す）
     fn vapid_public_key(&self) -> Option<String>;
     fn push(&self, subscription_url: &str) -> impl Future<Output = Result<PushOutcome>> + Send;
 }
