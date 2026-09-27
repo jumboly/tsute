@@ -15,16 +15,25 @@ Phase 1（macOS）実装中。**ローカル開発サーバー相手の同一 Ma
 - macOS 統合: NSPasteboard 読み取り/正規化/書き込み、動画メタデータ/サムネイル、通知、ログイン項目、Finder 表示
 - デスクトップ: メニューバー常駐、プロファイル分離、登録/送信/プレビュー/ファイル確認/履歴/設定 UI、
   WebView の破棄/再生成、オートメーション経路（E2E 用）
-- テスト: 結合 10 件、実 Clipboard 6 件（手動実行）、メディア 1 件、デスクトップ E2E 14 ステップ
+- テスト: 結合 10 件、server-core ルール 4 件、実 Clipboard 6 件（手動実行）、メディア 1 件、
+  デスクトップ E2E 14 ステップ（debug / release .app とも PASS）、.app 統合チェック（e2e/app_checks.py）
 - GitHub Actions ワークフロー（CI / backend deploy / desktop build）、Blog リポジトリ（~/src/tsute-blog）
 
 ## 次にやること
 
 1. **[ユーザー待ち]** AWS アカウント・リージョン確認と `aws login` → `infra/bootstrap.sh` → `infra/deploy.sh test`
 2. AWS 経由 E2E: `python3 e2e/run_e2e.py --target cloud --env test`（chunk size/並列数のベンチも）
-3. .app バンドルで Keychain・通知・ログイン項目・メニューバー・実ドラッグ&ドロップを確認
+3. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
+   メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
 4. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行
 5. Phase 1 完了報告
+
+## .app 統合チェック結果（2026-09-27, e2e/out/app-checks.json）
+
+- Keychain: 保存 → 再起動後に許可ダイアログなしで読み出し・再認証 → 削除 OK
+- ログイン項目（SMAppService.mainApp）: 登録で enabled → 解除で not_registered（テスト後に解除済み）
+- Idle（ウィンドウを閉じた状態）: CPU 0.0%、RSS 約 101MB（ウィンドウ表示中 約 110MB + WebContent プロセス）
+- 通知: authorization granted=false（要手動許可・表示確認）
 
 ## 既知の問題 / 注意
 
@@ -35,6 +44,8 @@ Phase 1（macOS）実装中。**ローカル開発サーバー相手の同一 Ma
 - ad-hoc 署名のため、再ビルド後は既存 Keychain 項目へのアクセス時に許可ダイアログが出る（ADR-0011）。
 - テスト実行時の `sandbox_extension_consume failed` ログは file URL を扱う際の OS のメッセージで、動作には影響しない。
 - フォルダの Drop は未対応（確認画面で除外理由を表示）。
+- macOS 27 では strip 済み proc-macro dylib を dyld が拒否するため `[profile.release.build-override] strip = false`。
+- Lambda のクロスビルドは `CARGO_TARGET_DIR=target/lambda-build`（ホストの release 成果物との衝突回避）。
 
 ## 判断ログ（ADR 化しない小さなもの）
 
