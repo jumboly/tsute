@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  tsute backend (per environment): DynamoDB, S3 transfer bucket, Lambda (Rust, arm64),
+  API Gateway HTTP API (/api/*) and WebSocket API (stage "ws"). See docs/adr/0009-iac.md.
+
+Parameters:
+  EnvName:
+    Type: String
+    AllowedPattern: "[a-z0-9-]{1,16}"
+  ArtifactBucket:
+    Type: String
+    Description: Bucket holding the Lambda zip (created by the bootstrap stack)
+  LambdaS3Key:
+    Type: String
+  TransferRetentionDays:
+    Type: Number
+    Default: 8
+    Description: Safety-net lifecycle expiry for transfer objects (app deletes on completion; transfers expire after 7 days)
+  ApiRateLimit:
+    Type: Number
+    Default: 50
+    Description: Steady-state requests/sec per API (caps cost if credentials leak)
+
+Resources:
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub tsute-${EnvName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
+      SSESpecification: { SSEEnabled: true }
+
+  TransferBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub tsute-${EnvName}-transfers-${AWS::AccountId}-${AWS::Region}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-transfers
+            Status: Enabled
+            Prefix: transfers/
+            ExpirationInDays: !Ref TransferRetentionDays
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
+
+  TransferBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TransferBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: [!GetAtt TransferBucket.Arn, !Sub "${TransferBucket.Arn}/*"]
+            Condition: { Bool: { aws:SecureTransport: "false" } }
+
+  ApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]
+      Policies:
+        - PolicyName: tsute-api
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem, dynamodb:UpdateItem, dynamodb:Query]
+                Resource: !GetAtt Table.Arn
+              - Effect: Allow
+                # presigned URL はこのロールの権限で署名されるため Put/Get が必要
+                Action: [s3:PutObject, s3:GetObject, s3:DeleteObject]
+                Resource: !Sub "${TransferBucket.Arn}/transfers/*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt TransferBucket.Arn
+                Condition: { StringLike: { s3:prefix: "transfers/*" } }
+              - Effect: Allow
+                Action: execute-api:ManageConnections
+                Resource: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/ws/POST/@connections/*
+
+  AdminFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]
+      Policies:
+        - PolicyName: tsute-admin
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem, dynamodb:Query]
+                Resource: !GetAtt Table.Arn
+              - Effect: Allow
+                Action: execute-api:ManageConnections
+                Resource: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/ws/POST/@connections/*
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/tsute-${EnvName}-api
+      RetentionInDays: 14
+  AdminLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/tsute-${EnvName}-admin
+      RetentionInDays: 90
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ApiLogGroup
+    Properties:
+      FunctionName: !Sub tsute-${EnvName}-api
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      Handler: bootstrap
+      MemorySize: 256
+      Timeout: 29
+      Role: !GetAtt ApiFunctionRole.Arn
+      Code: { S3Bucket: !Ref ArtifactBucket, S3Key: !Ref LambdaS3Key }
+      Environment:
+        Variables:
+          TSUTE_ROLE: api
+          TABLE_NAME: !Ref Table
+          BUCKET_NAME: !Ref TransferBucket
+          WS_MANAGEMENT_ENDPOINT: !Sub https://${WsApi}.execute-api.${AWS::Region}.amazonaws.com/ws
+          RUST_LOG: info
+
+  AdminFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: AdminLogGroup
+    Properties:
+      FunctionName: !Sub tsute-${EnvName}-admin
+      Description: IAM-only admin operations (enrollment keys). Not attached to any API.
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      Handler: bootstrap
+      MemorySize: 256
+      Timeout: 29
+      Role: !GetAtt AdminFunctionRole.Arn
+      Code: { S3Bucket: !Ref ArtifactBucket, S3Key: !Ref LambdaS3Key }
+      Environment:
+        Variables:
+          TSUTE_ROLE: admin
+          TABLE_NAME: !Ref Table
+          BUCKET_NAME: !Ref TransferBucket
+          WS_MANAGEMENT_ENDPOINT: !Sub https://${WsApi}.execute-api.${AWS::Region}.amazonaws.com/ws
+          RUST_LOG: info
+
+  # ---------- HTTP API ----------
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub tsute-${EnvName}-http
+      ProtocolType: HTTP
+  HttpIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: "2.0"
+      TimeoutInMillis: 29000
+  HttpRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: ANY /api/{proxy+}
+      Target: !Sub integrations/${HttpIntegration}
+  HttpStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingRateLimit: !Ref ApiRateLimit
+        ThrottlingBurstLimit: 100
+  HttpInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*
+
+  # ---------- WebSocket API ----------
+  WsApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub tsute-${EnvName}-ws
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+  WsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WsApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations
+  WsConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: $connect
+      Target: !Sub integrations/${WsIntegration}
+  WsDisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: $disconnect
+      Target: !Sub integrations/${WsIntegration}
+  WsDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: $default
+      Target: !Sub integrations/${WsIntegration}
+  WsStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WsApi
+      # ステージ名を "ws" にすると、CloudFront の /ws がそのままステージのルートに対応する（URI 書き換え不要）
+      StageName: ws
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingRateLimit: !Ref ApiRateLimit
+        ThrottlingBurstLimit: 100
+  WsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/*
+
+Outputs:
+  HttpApiDomain:
+    Value: !Sub ${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+  WsApiDomain:
+    Value: !Sub ${WsApi}.execute-api.${AWS::Region}.amazonaws.com
+  AdminFunctionName:
+    Value: !Ref AdminFunction
+  TableName:
+    Value: !Ref Table
+  TransferBucketName:
+    Value: !Ref TransferBucket

@@ -6,4 +6,6 @@
 /e2e/out
 .env
 .env.*
+/infra/env/*.env
+!/infra/env/example.env
 !.env.example

@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  tsute bootstrap (once per account+region, deployed manually by an administrator):
+  Lambda artifact bucket, CloudFormation execution role, and the GitHub Actions OIDC deploy role
+  for the application repository. Long-lived AWS access keys are never used by CI.
+
+Parameters:
+  GitHubAppRepo:
+    Type: String
+    Description: owner/repo of the application repository (trusted via OIDC)
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Set false if token.actions.githubusercontent.com provider already exists in this account
+
+Conditions:
+  CreateProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub tsute-artifacts-${AWS::AccountId}-${AWS::Region}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      LifecycleConfiguration:
+        Rules:
+          - { Id: expire-old-artifacts, Status: Enabled, Prefix: lambda/, ExpirationInDays: 90 }
+
+  # CloudFormation がスタック操作時に引き受けるロール。CI のロール自体にはリソース作成権限を持たせない。
+  CfnExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tsute-cfn-exec
+      AssumeRolePolicyDocument:
+        Statement:
+          - { Effect: Allow, Principal: { Service: cloudformation.amazonaws.com }, Action: sts:AssumeRole }
+      Policies:
+        - PolicyName: tsute-stack-resources
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:*
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:*:${AWS::AccountId}:table/tsute-*
+              - Effect: Allow
+                Action: s3:*
+                Resource: [!Sub "arn:${AWS::Partition}:s3:::tsute-*"]
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${ArtifactBucket.Arn}/lambda/*"
+              - Effect: Allow
+                Action: lambda:*
+                Resource: !Sub arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:function:tsute-*
+              - Effect: Allow
+                Action: [apigateway:*]
+                Resource: "*"
+              - Effect: Allow
+                Action: [logs:*]
+                Resource: !Sub arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:/aws/lambda/tsute-*
+              - Effect: Allow
+                Action: [iam:GetRole, iam:CreateRole, iam:DeleteRole, iam:PassRole, iam:TagRole, iam:UntagRole,
+                         iam:PutRolePolicy, iam:DeleteRolePolicy, iam:GetRolePolicy,
+                         iam:AttachRolePolicy, iam:DetachRolePolicy, iam:UpdateAssumeRolePolicy]
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/tsute-*
+              - Effect: Allow
+                Action: [cloudfront:*]
+                Resource: "*"
+
+  AppDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tsute-github-app-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # GitHub Environment（test / production）経由の job だけが引き受けられる
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubAppRepo}:environment:*
+      Policies:
+        - PolicyName: tsute-deploy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: [cloudformation:CreateChangeSet, cloudformation:ExecuteChangeSet, cloudformation:DescribeChangeSet,
+                         cloudformation:DeleteChangeSet, cloudformation:DescribeStacks, cloudformation:DescribeStackEvents,
+                         cloudformation:GetTemplateSummary, cloudformation:CreateStack, cloudformation:UpdateStack]
+                Resource: !Sub arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/tsute-*/*
+              - Effect: Allow
+                Action: cloudformation:ValidateTemplate
+                Resource: "*"
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt CfnExecutionRole.Arn
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub "${ArtifactBucket.Arn}/lambda/*"
+
+Outputs:
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
+  CfnExecutionRoleArn:
+    Value: !GetAtt CfnExecutionRole.Arn
+  AppDeployRoleArn:
+    Value: !GetAtt AppDeployRole.Arn

@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  tsute edge (per environment, deploy in us-east-1): single FQDN CloudFront distribution.
+  "/" = technical blog (S3, deployed by the separate blog repository), "/api/*" = HTTP API, "/ws" = WebSocket API.
+  Owned by the application repository; the blog repository only syncs objects into BlogBucket and invalidates.
+
+Parameters:
+  EnvName:
+    Type: String
+    AllowedPattern: "[a-z0-9-]{1,16}"
+  HttpApiDomain:
+    Type: String
+  WsApiDomain:
+    Type: String
+  AppDomainName:
+    Type: String
+    Default: ""
+    Description: Custom FQDN (e.g. the APP_BASE_URL host). Empty = use the *.cloudfront.net domain.
+  CertificateArn:
+    Type: String
+    Default: ""
+    Description: ACM certificate in us-east-1 covering AppDomainName (required when AppDomainName is set)
+
+  GitHubBlogRepo:
+    Type: String
+    Default: ""
+    Description: owner/repo of the blog repository. Empty = no blog deploy role.
+
+Conditions:
+  HasDomain: !Not [!Equals [!Ref AppDomainName, ""]]
+  HasBlogRepo: !Not [!Equals [!Ref GitHubBlogRepo, ""]]
+
+Resources:
+  BlogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub tsute-${EnvName}-blog-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+
+  BlogOac:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub tsute-${EnvName}-blog
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  BlogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BlogBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub "${BlogBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  # 静的サイトジェネレータの "/posts/foo/" → "/posts/foo/index.html" を解決する
+  BlogIndexFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub tsute-${EnvName}-blog-index
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Append index.html to directory-style blog URLs
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var req = event.request;
+          var uri = req.uri;
+          if (uri.endsWith('/')) {
+            req.uri = uri + 'index.html';
+          } else if (uri.lastIndexOf('.') < uri.lastIndexOf('/')) {
+            req.uri = uri + '/index.html';
+          }
+          return req;
+        }
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub tsute ${EnvName}
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_200
+        Aliases: !If [HasDomain, [!Ref AppDomainName], !Ref AWS::NoValue]
+        ViewerCertificate: !If
+          - HasDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: blog
+            DomainName: !GetAtt BlogBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt BlogOac.Id
+            S3OriginConfig: { OriginAccessIdentity: "" }
+          - Id: http-api
+            DomainName: !Ref HttpApiDomain
+            CustomOriginConfig: { OriginProtocolPolicy: https-only, OriginSSLProtocols: [TLSv1.2] }
+          - Id: ws-api
+            DomainName: !Ref WsApiDomain
+            CustomOriginConfig: { OriginProtocolPolicy: https-only, OriginSSLProtocols: [TLSv1.2] }
+        DefaultCacheBehavior:
+          TargetOriginId: blog
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # Managed-SecurityHeadersPolicy
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt BlogIndexFunction.FunctionARN
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: http-api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+            # Host を転送すると API Gateway がドメイン不一致で拒否するため除外する
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # Managed-AllViewerExceptHostHeader
+          - PathPattern: /ws
+            TargetOriginId: ws-api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # Managed-AllViewerExceptHostHeader
+
+  # Blog リポジトリの CI 用。Blog バケットへの同期と invalidation だけを許可し、アプリ側には一切触れられない
+  BlogDeployRole:
+    Type: AWS::IAM::Role
+    Condition: HasBlogRepo
+    Properties:
+      RoleName: !Sub tsute-${EnvName}-github-blog-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubBlogRepo}:*
+      Policies:
+        - PolicyName: tsute-blog-deploy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: [s3:PutObject, s3:DeleteObject, s3:GetObject]
+                Resource: !Sub "${BlogBucket.Arn}/*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt BlogBucket.Arn
+              - Effect: Allow
+                Action: cloudfront:CreateInvalidation
+                Resource: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+Outputs:
+  BlogDeployRoleArn:
+    Condition: HasBlogRepo
+    Value: !GetAtt BlogDeployRole.Arn
+  DistributionId:
+    Value: !Ref Distribution
+  DistributionDomainName:
+    Value: !GetAtt Distribution.DomainName
+  BlogBucketName:
+    Value: !Ref BlogBucket
+  AppBaseUrl:
+    Value: !If [HasDomain, !Sub "https://${AppDomainName}", !Sub "https://${Distribution.DomainName}"]
