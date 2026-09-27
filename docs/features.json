@@ -192,7 +192,7 @@
       "area": "desktop",
       "title": "OS 通知",
       "status": "done",
-      "notes": "ad-hoc 署名では OS 通知不可（UNError code 1）のため、メニューバーアイコンの未確認印で代替（ADR-0014, E2E で確認）。OS 通知は Developer ID 署名時に有効になる"
+      "notes": "ad-hoc 署名では OS 通知不可（UNError code 1）のため、メニューバーアイコンの未確認印で代替（ADR-0014, E2E で確認）。OS 通知は Developer ID 署名時に有効になる。2026-09-27 ユーザーが実機で未確認印の表示・解除を確認"
     },
     {
       "id": "tray",

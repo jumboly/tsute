@@ -4,7 +4,8 @@
 
 ## 現在地
 
-**Phase 1 完了。2026-09-27 にユーザーが .app（default / test-b）で実機の動作を確認した。** 詳細は docs/PHASE1_REPORT.md。
+**Phase 1 完了。2026-09-27 にユーザーが .app（default / test-b）で実機の動作を確認した。**
+OS 通知は ad-hoc 署名では不可のため、メニューバーの未確認印で代替（ADR-0014, 実機確認済み）。 詳細は docs/PHASE1_REPORT.md。
 test 環境（AWS 444369845617 / ap-northeast-1）にデプロイ済み。**クラウド経由 E2E 14/14 PASS**。
 Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
