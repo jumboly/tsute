@@ -97,7 +97,7 @@ python3 e2e/web_e2e.py --target cloud --env test             # デプロイ済�
 ### デプロイ（独立）
 
 ```sh
-infra/vapid.sh <env>          # 初回のみ: VAPID 秘密鍵を SSM SecureString に作成（無ければ Web Push は無効）
+infra/vapid.sh <env>          # 初回のみ: VAPID 秘密鍵を SSM SecureString に作成し、API 関数を再起動して読み込ませる（無ければ Web Push は無効）
 infra/deploy.sh <env>         # Backend / Edge（/app/* のビヘイビア・App バケット・S3 CORS）
 infra/deploy-web.sh <env>     # web/ だけを同期して /app/* を invalidate（Backend・Blog は触らない）
 ```

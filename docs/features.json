@@ -346,7 +346,7 @@
       "title": "Web Push（VAPID、Subscription 所有権、WS 不在時のみ送信、本文なし Payload）",
       "phase": "W",
       "status": "in_progress",
-      "notes": "空 Payload + VAPID（ES256）、WS で届かなかったときだけ送信、SSRF 許可リスト、410 で削除。web_rules で確認。test 環境の VAPID 鍵は未作成（infra/vapid.sh test をユーザーが実行）。実機での通知表示は未確認"
+      "notes": "空 Payload + VAPID（ES256）、WS で届かなかったときだけ送信、SSRF 許可リスト、410 で削除。web_rules で確認。test 環境で VAPID 鍵を作成済み（/api/push/config が公開鍵を返す）。実機での通知表示は未確認"
     },
     {
       "id": "web-offline-recovery",

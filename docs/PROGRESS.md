@@ -18,8 +18,10 @@ Phase 2（Windows）はユーザーの指示があるまで着手しない。
 ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pwa.md`、機能一覧 features.json の `phase: "W"`。
 - test 環境にデプロイ済み（Backend / Edge / `/app/`）。クラウド Web E2E 26/26（Chromium・WebKit、2 回連続）、
   Native ↔ Web 7/7、既存デスクトップ E2E 14/14（回帰なし）。ローカルも同じく全通過。
-- **Web Push は test 環境で未有効**: VAPID 鍵を SSM に書く `infra/vapid.sh test` がエージェントの権限で拒否されたため、
-  ユーザーが実行する（その後 `infra/deploy.sh test` で API 関数に読み込ませる）。鍵が無い間は「次に開いたときに回収」で動く。
+- **Web Push を test 環境で有効化（2026-09-27）**: ユーザーが `infra/vapid.sh test` で VAPID 鍵を作成し、API 関数を
+  同じ成果物で入れ直して読み込ませた（`/api/push/config` が公開鍵を返すことを E2E で確認）。
+  コード不変の `infra/deploy.sh` では Lambda が再起動しないため、`vapid.sh` が自分で入れ直すように修正。
+  実機での通知表示は未確認。
 
 ### できていること
 - Rust workspace: proto / server-core / server-local / server-lambda / client-core / os / desktop
@@ -35,18 +37,17 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 
 ## 次にやること
 
-1. **[ユーザー作業]** `infra/vapid.sh test` → `infra/deploy.sh test`（Web Push の有効化）
-2. **[ユーザー実機確認]** docs/TESTING.md §7 のスマホ手順（iPhone PWA: 登録・再起動後も同一 Endpoint・音声入力 → Send →
+1. **[ユーザー実機確認]** docs/TESTING.md §7 のスマホ手順（iPhone PWA: 登録・再起動後も同一 Endpoint・音声入力 → Send →
    Mac で受信・Push 通知・機内モード後の回収、Android: Share Target、Firefox: Paste 経路）。結果で features.json を done に
-3. Phase 2（Windows）はユーザーの指示があるまで着手しない。
+2. Phase 2（Windows）はユーザーの指示があるまで着手しない。
    GitHub リポジトリの作成（CI/CD の実行。`web-e2e` ジョブと `deploy-web.yml` を追加済み・未実行）
-4. chunk size / 並列数の実回線ベンチ
-5. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
+3. chunk size / 並列数の実回線ベンチ
+4. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
    メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
-6. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行。作成したら
+5. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行。作成したら
    `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` を確認し、immutable subject が有効なら
    bootstrap の `GitHubAppRepo` を `owner@ownerId/repo@repoId` 形式で更新する（ADR-0010。Blog ロールで実際に踏んだ）
-7. Phase 1 完了報告
+6. Phase 1 完了報告
 
 ## .app 統合チェック結果（2026-09-27, e2e/out/app-checks.json）
 

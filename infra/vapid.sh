@@ -27,4 +27,18 @@ target/debug/tsute-vapid-keygen "$TMP/key"
 aws ssm put-parameter --region "$AWS_REGION" --name "$PARAM" --type SecureString --overwrite \
   --value "file://$TMP/key" >/dev/null
 echo "作成しました: ${PARAM}"
-echo "API 関数は起動時に読み込むため、反映には infra/deploy.sh ${ENV_NAME}（または Lambda のコールドスタート）が必要です。"
+
+# API 関数は起動時に鍵を読む。コードが変わらないと infra/deploy.sh は Lambda を更新しない（実行環境が残る）ため、
+# 同じ成果物で入れ直して実行環境を作り直す（CloudFormation の管理値は変えないのでドリフトにならない）
+FUNC="tsute-${ENV_NAME}-api"
+if aws lambda get-function --region "$AWS_REGION" --function-name "$FUNC" >/dev/null 2>&1; then
+  ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+  KEY="$(aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "tsute-${ENV_NAME}-backend" \
+    --query "Stacks[0].Parameters[?ParameterKey=='LambdaS3Key'].ParameterValue" --output text)"
+  aws lambda update-function-code --region "$AWS_REGION" --function-name "$FUNC" \
+    --s3-bucket "tsute-artifacts-${ACCOUNT_ID}-${AWS_REGION}" --s3-key "$KEY" >/dev/null
+  aws lambda wait function-updated --region "$AWS_REGION" --function-name "$FUNC"
+  echo "${FUNC} を再起動しました（Web Push 有効）"
+else
+  echo "API 関数が未作成です。infra/deploy.sh ${ENV_NAME} の後は起動時に鍵が読み込まれます。"
+fi
