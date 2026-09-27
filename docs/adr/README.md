@@ -15,3 +15,4 @@
 | [0011](0011-credential-storage.md) | Credential Storage: Keychain（開発用ファイルストアは明示フラグ時のみ） | Accepted |
 | [0012](0012-autostart-and-profiles.md) | Autostart と複数 Profile | Accepted |
 | [0013](0013-desktop-e2e-automation.md) | Desktop E2E: アプリ内オートメーション経路 | Accepted |
+| [0014](0014-unread-tray-badge.md) | 受信の知らせ方: メニューバーアイコンの未確認印（OS 通知の代替） | Accepted |

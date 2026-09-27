@@ -28,6 +28,17 @@ fn default_app_dir() -> PathBuf {
 }
 
 pub fn show_window(app: &AppHandle, view: Option<&str>) {
+    // ウィンドウを開いた = 受信を確認したとみなし、メニューバーの印を消す
+    let had_unread = {
+        let st = app.state::<AppState>();
+        let mut u = st.unread.lock().expect("lock");
+        let had = !u.is_empty();
+        u.clear();
+        had
+    };
+    if had_unread {
+        tray::refresh(app);
+    }
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();
@@ -125,6 +136,13 @@ async fn on_client_event(app: &AppHandle, client: &Client, ev: ClientEvent) {
                 return;
             }
             let st = app.state::<AppState>();
+            // ウィンドウが前面で見えているときは既に確認できるので印を付けない
+            let visible = app
+                .get_webview_window("main")
+                .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
+            if !visible {
+                st.unread.lock().expect("lock").insert(transfer_id.clone());
+            }
             if !st
                 .endpoints
                 .lock()
@@ -262,6 +280,7 @@ fn main() {
         client: Mutex::new(None),
         snapshot: Mutex::new(None),
         endpoints: Mutex::new(vec![]),
+        unread: Mutex::new(Default::default()),
         _lock: lock,
     };
 
@@ -316,8 +335,25 @@ fn main() {
         })
         .on_window_event(|window, ev| {
             // Close = WebView を破棄してメモリを返す。バックグラウンド処理と常駐は継続する
-            if let tauri::WindowEvent::CloseRequested { .. } = ev {
-                let _ = window.destroy();
+            match ev {
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    let _ = window.destroy();
+                }
+                // ウィンドウが前面に来た = 受信を確認できる状態なので、メニューバーの印を消す
+                tauri::WindowEvent::Focused(true) => {
+                    let app = window.app_handle();
+                    let cleared = {
+                        let st = app.state::<AppState>();
+                        let mut u = st.unread.lock().expect("lock");
+                        let had = !u.is_empty();
+                        u.clear();
+                        had
+                    };
+                    if cleared {
+                        tray::refresh(app);
+                    }
+                }
+                _ => {}
             }
         })
         .build(tauri::generate_context!())

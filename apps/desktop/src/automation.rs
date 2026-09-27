@@ -66,6 +66,10 @@ async fn handle(app: &AppHandle, req: Value) -> Result<Value, String> {
         "window_open" => Ok(json!(app.get_webview_window("main").is_some())),
         "eval" => eval(app, req["js"].as_str().unwrap_or("")).await,
         "pid" => Ok(json!(std::process::id())),
+        // メニューバーアイコンの「未確認の受信」印の状態
+        "unread" => Ok(json!(
+            app.state::<crate::state::AppState>().unread.lock().expect("lock").len()
+        )),
         "quit" => {
             app.exit(0);
             Ok(json!(true))

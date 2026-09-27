@@ -12,8 +12,11 @@ use crate::state::AppState;
 
 const TRAY_ID: &str = "main";
 
-fn icon(online: bool) -> tauri::image::Image<'static> {
-    let bytes: &'static [u8] = if online {
+fn icon(online: bool, unread: bool) -> tauri::image::Image<'static> {
+    // 未確認の受信を最優先で示す（ad-hoc 署名では OS 通知が使えないため、その代替。ADR-0014）
+    let bytes: &'static [u8] = if unread {
+        include_bytes!("../icons/tray-unread.png")
+    } else if online {
         include_bytes!("../icons/tray.png")
     } else {
         include_bytes!("../icons/tray-offline.png")
@@ -24,7 +27,7 @@ fn icon(online: bool) -> tauri::image::Image<'static> {
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let st = app.state::<AppState>();
     let mut b = TrayIconBuilder::with_id(TRAY_ID)
-        .icon(icon(false))
+        .icon(icon(false, false))
         .icon_as_template(true)
         .menu(&build_menu(app)?)
         .show_menu_on_left_click(true)
@@ -58,7 +61,12 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 ConnState::Connecting => "○ 接続しています…",
                 ConnState::Offline => "○ オフライン",
             };
-            format!("{s} — {} [{}]", c.config().name, st.args.profile)
+            let unread = st.unread.lock().expect("lock").len();
+            let mut line = format!("{s} — {} [{}]", c.config().name, st.args.profile);
+            if unread > 0 {
+                line.push_str(&format!(" · 未確認の受信 {unread} 件"));
+            }
+            line
         }
     };
     let status_item = MenuItem::with_id(app, "status", status, false, None::<&str>)?;
@@ -150,13 +158,17 @@ pub fn refresh(app: &AppHandle) {
         let Some(tray) = app2.tray_by_id(TRAY_ID) else { return };
         let st = app2.state::<AppState>();
         let online = st.client().is_some_and(|c| c.connection_state() == ConnState::Online);
-        let _ = tray.set_icon(Some(icon(online)));
+        let unread = st.unread.lock().expect("lock").len();
+        let _ = tray.set_icon(Some(icon(online, unread > 0)));
         let _ = tray.set_icon_as_template(true);
-        let tip = format!(
+        let mut tip = format!(
             "つて [{}] — {}",
             st.args.profile,
             if online { "接続中" } else { "オフライン" }
         );
+        if unread > 0 {
+            tip.push_str(&format!(" — 未確認の受信 {unread} 件"));
+        }
         let _ = tray.set_tooltip(Some(tip));
         if let Ok(m) = build_menu(&app2) {
             let _ = tray.set_menu(Some(m));

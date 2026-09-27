@@ -191,8 +191,8 @@
       "id": "notification",
       "area": "desktop",
       "title": "OS 通知",
-      "status": "in_progress",
-      "notes": "実装済み。ad-hoc 署名 .app で許可が granted=false。手動許可・表示確認待ち"
+      "status": "done",
+      "notes": "ad-hoc 署名では OS 通知不可（UNError code 1）のため、メニューバーアイコンの未確認印で代替（ADR-0014, E2E で確認）。OS 通知は Developer ID 署名時に有効になる"
     },
     {
       "id": "tray",

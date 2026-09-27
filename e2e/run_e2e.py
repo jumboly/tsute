@@ -127,6 +127,11 @@ def incoming_done(app, kind, exclude=()):
     return new[0] if new else None
 
 
+def incoming_done_hidden(app, seen):
+    """ウィンドウがない状態では DOM を見られないため、未確認件数（受信完了で増える）で判定する"""
+    return app.cmd(cmd="unread") >= 1
+
+
 def item_click(app, tid, testid):
     app.js(f"""const b = document.querySelector('#history li[data-id="{tid}"] [data-testid="{testid}"]');
                if (!b) throw new Error('no {testid} button'); b.click(); return 1;""")
@@ -391,8 +396,10 @@ def run_all(args, server, work, apps):
 
     @step("Window close keeps process resident and receiving (WebView destroyed)")
     def window_lifecycle():
+        B.show()
         B.cmd(cmd="hide")
         B.wait(lambda: not B.cmd(cmd="window_open"), "window destroyed", timeout=10)
+        assert B.cmd(cmd="unread") == 0, "badge should be clear after the window was shown"
         assert B.proc.poll() is None, "process must keep running after window close"
         B.wait(lambda: A.js("return document.body.dataset.connection") == "online", "A online")
         A.wait(lambda: A.js("return document.querySelectorAll('#target option:not([disabled])').length > 0"), "targets")
@@ -400,11 +407,15 @@ def run_all(args, server, work, apps):
         A.click("send-clipboard")
         A.wait(lambda: A.view() == "clip", "preview")
         A.click("clip-send")
-        time.sleep(3)
+        # ウィンドウを閉じている間に受信したら、メニューバーのアイコンに未確認の印が付く
+        B.wait(lambda: incoming_done_hidden(B, seen), "received while window closed", timeout=60)
+        assert B.cmd(cmd="unread") >= 1, "tray icon must show unread badge"
         B.show()
         tid = B.wait(lambda: incoming_done(B, "clipboard_text", seen), "received while closed")
         seen.add(tid)
-        return "ok"
+        # ウィンドウを開いたら印は消える
+        B.wait(lambda: B.cmd(cmd="unread") == 0, "unread badge cleared after opening window", timeout=10)
+        return "received while closed; tray badge set and cleared"
     window_lifecycle()
 
     @step("Quit from app terminates process")

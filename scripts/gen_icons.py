@@ -49,8 +49,32 @@ def tray_icon(size):
         return (0, 0, 0, int(255 * glyph(size, x, y)))
     return px
 
+def tray_offline_icon(size):
+    # 未接続: 端点の円を中抜きにして薄く表示する
+    def px(x, y):
+        u, v = x / size, y / size
+        inner = min(math.hypot(u - 0.28, v - 0.66), math.hypot(u - 0.72, v - 0.34)) < 0.06
+        return (0, 0, 0, 0 if inner else int(255 * glyph(size, x, y) * 0.55))
+    return px
+
+
+def tray_unread_icon(size):
+    # 未確認の受信あり: 本体を左下に縮め、右上に丸印（通知の代わりにメニューバーで知らせる。ADR-0014）
+    def px(x, y):
+        u, v = x / size, y / size
+        k = 0.74
+        uu, vv = u / k, (v - (1 - k)) / k
+        g = glyph(size, uu * size, vv * size) if 0 <= uu <= 1 and 0 <= vv <= 1 else 0
+        d = math.hypot(u - 0.79, v - 0.21)
+        dot = max(0.0, min(1.0, 0.5 - (d - 0.17) * size))
+        a = max(dot, 0 if d < 0.23 else g)
+        return (0, 0, 0, int(255 * a))
+    return px
+
 out = sys.argv[1] if len(sys.argv) > 1 else "apps/desktop/icons"
 os.makedirs(out, exist_ok=True)
 write_png(f"{out}/icon.png", 512, 512, app_icon(512))
 write_png(f"{out}/tray.png", 44, 44, tray_icon(44))
+write_png(f"{out}/tray-unread.png", 44, 44, tray_unread_icon(44))
+write_png(f"{out}/tray-offline.png", 44, 44, tray_offline_icon(44))
 print("ok")

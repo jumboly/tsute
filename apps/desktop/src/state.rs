@@ -49,6 +49,8 @@ pub struct AppState {
     /// （プレビューと実際に送る内容が食い違わないようにするため）
     pub snapshot: Mutex<Option<ClipSnapshot>>,
     pub endpoints: Mutex<Vec<EndpointInfo>>,
+    /// ユーザーがまだウィンドウで確認していない受信（メニューバーアイコンの印に使う。ADR-0014）
+    pub unread: Mutex<std::collections::HashSet<String>>,
     /// 同一プロファイルの二重起動防止ロック（保持し続ける）
     pub _lock: std::fs::File,
 }

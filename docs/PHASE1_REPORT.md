@@ -49,7 +49,7 @@ docs/adr/README.md（0001–0013）。
 
 ## 未解決事項
 
-1. OS 通知: ad-hoc 署名の .app では通知許可が得られなかった（システム設定で手動許可→表示確認が必要）。
+1. OS 通知: ad-hoc 署名では macOS が通知を拒否する（UNError code 1）。代替としてメニューバーアイコンの未確認印を実装（ADR-0014）。OS 通知は Developer ID 署名時に有効化される。
 2. 手動確認項目: Finder からの実ドラッグ、メニューバー操作、「保存…」ダイアログ、実ログインでの hidden 起動。
 3. GitHub リポジトリ未作成のため CI / CD / Blog CI は未実行（OIDC ロールはデプロイ済み）。
 4. 配布には Developer ID 署名・公証が必要（現状 ad-hoc）。再ビルド後は Keychain 許可ダイアログが出る。
