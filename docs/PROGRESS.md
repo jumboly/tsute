@@ -37,7 +37,7 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 
 ## 次にやること
 
-0. **実機確認済み（2026-09-27, iPhone のホーム画面 PWA）**: 登録、音声入力 → Send → Mac で受信、Mac → PWA の Text 受信。
+0. **実機確認済み（2026-09-27, iPhone のホーム画面 PWA）**: 登録、音声入力 → Send → Mac で受信、Mac → PWA の Text 受信、PWA を完全に閉じた状態での Web Push 通知。
    気づいた点: (a) PWA の受信カードに気づきにくい (b) Mac の送信先の初期値が一覧の先頭（旧テスト Endpoint）で誤送信しかけた
    (c) iOS はホーム画面の Web アプリと Safari で保存領域が別で、PWA 側で再登録が必要（仕様。TESTING.md に記載）
 1. **[ユーザー実機確認]** docs/TESTING.md §7 のスマホ手順（iPhone PWA: 登録・再起動後も同一 Endpoint・音声入力 → Send →

@@ -345,8 +345,8 @@
       "area": "realtime",
       "title": "Web Push（VAPID、Subscription 所有権、WS 不在時のみ送信、本文なし Payload）",
       "phase": "W",
-      "status": "in_progress",
-      "notes": "空 Payload + VAPID（ES256）、WS で届かなかったときだけ送信、SSRF 許可リスト、410 で削除。web_rules で確認。test 環境で VAPID 鍵を作成済み（/api/push/config が公開鍵を返す）。実機での通知表示は未確認"
+      "status": "done",
+      "notes": "空 Payload + VAPID（ES256）、WS で届かなかったときだけ送信、SSRF 許可リスト、410 で削除。web_rules で確認。2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA を完全に閉じた状態）で Mac からの送信の通知表示を確認。Android / デスクトップ Browser の Push は未確認"
     },
     {
       "id": "web-offline-recovery",

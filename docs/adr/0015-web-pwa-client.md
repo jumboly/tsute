@@ -154,8 +154,8 @@ Endpoint が持つ能力を 3 種類に分け、「誰がそれを知る必要�
 | 実装技術 | ビルドなしの ES Modules | §1 |
 
 実機でしか確かめられず、未確認のもの（`docs/TESTING.md` の手動確認項目）:
-1. CloudFront 経由で応答の `Sec-WebSocket-Protocol` がそのまま Browser に届くか（test 環境で確認する）
-2. 空 Payload の Push で iOS のホーム画面 PWA が通知を表示できるか
+1. ~~CloudFront 経由で応答の `Sec-WebSocket-Protocol` がそのまま Browser に届くか~~ → test 環境の E2E と iPhone 実機で確認済み
+2. ~~空 Payload の Push で iOS のホーム画面 PWA が通知を表示できるか~~ → 2026-09-27 iPhone 実機で確認済み
 3. Firefox の `clipboard.read()` で `image/png` が取れるか（取れなくても Paste 経路で送れる）
 4. macOS の Chrome が Share Target に対応しているか
 
