@@ -18,3 +18,4 @@ tokio = { version = "1", features = ["sync"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+ed25519-dalek = "2"
