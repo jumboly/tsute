@@ -266,7 +266,7 @@
       "title": "Web Endpoint Enrollment（Web Crypto Ed25519 非抽出鍵 + IndexedDB）",
       "phase": "W",
       "status": "in_progress",
-      "notes": "Chromium/WebKit の E2E（ローカル・test 環境）で確認済み（Key 再利用拒否、再 Open 後も同じ Endpoint）。スマホ実機は手動確認待ち"
+      "notes": "Chromium/WebKit の E2E で確認済み。2026-09-27 ユーザーが iPhone 実機（ホーム画面の PWA）で確認済み: Safari と PWA でそれぞれ登録（iOS は保存領域が別のため PWA で再登録が必要）。再起動後の同一 Endpoint は未確認"
     },
     {
       "id": "web-auth",
@@ -297,8 +297,8 @@
       "area": "ui",
       "title": "Text 入力（キーボード / Paste / OS 音声入力）→ Preview → Send",
       "phase": "W",
-      "status": "in_progress",
-      "notes": "入力 / Paste → Preview → 確認 → Send。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。OS キーボード音声入力はスマホ実機で手動確認待ち"
+      "status": "done",
+      "notes": "入力 / Paste → Preview → 確認 → Send。2026-09-27 ユーザーが iPhone 実機（ホーム画面の PWA）で確認済み: OS キーボードの音声入力 → Send → Mac で受信"
     },
     {
       "id": "web-clip-read",
@@ -322,7 +322,7 @@
       "title": "Text/Image 受信表示・明示的 Copy / 保存 / Dismiss（自動反映しない）",
       "phase": "W",
       "status": "in_progress",
-      "notes": "コピー / 保存 / 共有 / 閉じる で received。操作まで Backend に残る。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。実機確認待ち"
+      "notes": "コピー / 保存 / 共有 / 閉じる で received。操作まで Backend に残る。Chromium/WebKit の E2E（ローカル・test 環境）で確認済み。実機確認待ち。2026-09-27 ユーザーが iPhone 実機（ホーム画面の PWA）で確認済み: Mac → PWA の Text 受信（ユーザーは受信カードに気づきにくかった → 改善候補）"
     },
     {
       "id": "web-pwa",

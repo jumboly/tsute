@@ -104,7 +104,8 @@ infra/deploy-web.sh <env>     # web/ だけを同期して /app/* を invalidate
 
 ### スマホ実機での確認（自動化できない項目。単に Browser で動いただけでは完了にしない）
 
-1. iPhone Safari で `https://<APP_BASE_URL>/app/` → Enrollment Key で登録 → 共有 →「ホーム画面に追加」→ ホーム画面から起動（standalone）
+1. iPhone Safari で `https://<APP_BASE_URL>/app/` → 共有 →「ホーム画面に追加」→ ホーム画面から起動（standalone）→ Enrollment Key で登録。
+   iOS はホーム画面の Web アプリと Safari で保存領域が別なので、Safari で登録済みでも PWA では登録し直しになる
 2. ホーム画面の PWA を閉じて再度開き、同じ Endpoint 名のまま使える（再登録を求められない）
 3. テキスト欄でキーボードのマイク（音声入力）→ 送信先に Mac を選ぶ → 確認 → Send → Mac で受信・反映
 4. Mac から Text / Image を送る → PWA が前面なら即時表示（WS）→ コピー / 保存（共有 → 画像を保存）
