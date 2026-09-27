@@ -95,7 +95,8 @@ async function refreshEndpoints() {
   if (!state?.enrolled) return;
   try { endpoints = await invoke("list_endpoints"); } catch { return; }
   const sel = $("target");
-  const prev = sel.value;
+  // 画面を開き直した直後は、前回送った相手を初期値にする（先頭の Endpoint を既定にしない）
+  const prev = sel.value || state.last_receiver;
   sel.replaceChildren();
   const others = endpoints.filter((e) => e.endpoint_id !== state.endpoint_id);
   for (const e of others) {

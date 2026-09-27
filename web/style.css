@@ -100,6 +100,8 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 .cards li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
 .cards .meta { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+.cards li.unhandled { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.cards li.unhandled .meta::before { content: "新着 · "; color: var(--accent); font-weight: 600; }
 .content { display: block; max-width: 100%; max-height: 50vh; overflow: auto; margin: 6px 0;
   padding: 10px; border-radius: 8px; background: var(--bg); }
 pre.content { white-space: pre-wrap; word-break: break-word; font: 15px/1.5 ui-monospace, Menlo, monospace;

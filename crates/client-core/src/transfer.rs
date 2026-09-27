@@ -286,6 +286,16 @@ impl Client {
         self.inner.profile.save_config(&c)
     }
 
+    /// 送信に成功した送信先を覚える。保存に失敗しても送信自体は成功しているので、呼び出し側は結果を無視してよい
+    pub fn remember_receiver(&self, receiver: &str) -> Result<(), Error> {
+        let mut c = self.inner.config.lock().expect("lock");
+        if c.last_receiver.as_deref() == Some(receiver) {
+            return Ok(());
+        }
+        c.last_receiver = Some(receiver.to_string());
+        self.inner.profile.save_config(&c)
+    }
+
     pub async fn rename(&self, name: &str) -> Result<(), Error> {
         let me = self.inner.api.rename(name).await?;
         let mut c = self.inner.config.lock().expect("lock").clone();

@@ -9,7 +9,7 @@
 //   永続ストレージには書かない。
 // - 常駐プロセスのように扱わない（状態は短命・イベント単位で完結させる）。
 
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = `tsute-shell-${VERSION}`;
 const SHELL_FILES = [
   "./",
@@ -101,6 +101,8 @@ self.addEventListener("push", (e) => {
     // Safari の「Push ごとに通知を表示する」要件を満たすため通知は常に出す
     const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const w of wins) w.postMessage({ type: "resync" });
+    // 件数は Payload が空なので分からない。印だけ付け、App を開いたときに正確な件数へ置き換える
+    try { await navigator.setAppBadge?.(); } catch { /* 未対応 */ }
     await self.registration.showNotification("つて", {
       body: "新しい受信があります",
       tag: "tsute-transfer",

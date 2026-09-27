@@ -30,6 +30,11 @@ from web_e2e import Client, LocalServer, make_png_js, results, step  # noqa: E40
 RUN = time.strftime("%H%M%S")
 
 
+def args_target_is_cloud():
+    # クラウドには他の Endpoint も残っているため、先頭がおとりとは限らない
+    return "--target" in sys.argv and sys.argv[sys.argv.index("--target") + 1] == "cloud"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", choices=["local", "cloud"], default="local")
@@ -71,6 +76,10 @@ def run(browser, server, work, binary, apps):
     seen = set()
 
     def enroll():
+        # 一覧の先頭に来るおとり（先に登録）。送信先の初期値が「先頭」ではなく「前回の相手」になることを確かめるため
+        decoy = Client(browser, server.base_url, f"E2E Decoy {RUN}")
+        decoy.enroll(server.issue_key())
+        decoy.ctx.close()
         N.wait(lambda: N.js("return document.body.dataset.ready === '1'"), "ready")
         N.fill("enroll-url", server.base_url)
         N.fill("enroll-key", server.issue_key())
@@ -151,10 +160,23 @@ def run(browser, server, work, binary, apps):
         item_click(N, tid, "apply")
         N.wait(lambda: "PNGf" in osascript("clipboard info"), "PNG on OS clipboard")
 
+    def remembers_receiver():
+        # 再起動直後の送信先は一覧の先頭ではなく、前回送った相手（ここでは Web）になる
+        N.quit()
+        N2 = apps["native"] = launch(binary, "test-wn", work)
+        N2.show()
+        N2.wait(lambda: N2.js(f"return [...document.querySelectorAll('#target option')].some(o => o.textContent.includes('{w_name}'))"), "targets loaded")
+        sel = N2.js("const s = document.getElementById('target'); return s.options[s.selectedIndex].textContent")
+        first = N2.js("return document.getElementById('target').options[0].textContent")
+        assert w_name in sel, sel
+        assert "Decoy" in first or args_target_is_cloud(), first
+        return sel
+
     for name, fn in [
         ("enroll native + web", enroll), ("native → web text", native_to_web_text),
         ("native → web image", native_to_web_image), ("native video/files rejected for web", native_video_rejected),
         ("web → native text", web_to_native_text), ("web → native image", web_to_native_image),
+        ("native remembers last receiver after restart", remembers_receiver),
     ]:
         step(name, fn)
     step("no console errors (web)", lambda: W.check_errors())

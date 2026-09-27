@@ -20,6 +20,10 @@ pub struct ProfileConfig {
     /// 受信ファイルの保存先（未設定なら既定のダウンロードフォルダ配下）
     #[serde(default)]
     pub download_dir: Option<PathBuf>,
+    /// 最後に送信した Endpoint。起動直後の送信先の初期値にする（一覧の先頭が既定だと、使っていない
+    /// Endpoint へ誤送信しかけたため）
+    #[serde(default)]
+    pub last_receiver: Option<String>,
 }
 
 pub struct Profile {
@@ -126,6 +130,7 @@ impl Profile {
             endpoint_id,
             name: endpoint_name.into(),
             download_dir: None,
+            last_receiver: None,
         };
         secrets.set(&self.secret_account(&cfg), key.as_bytes())?;
         self.save_config(&cfg)?;

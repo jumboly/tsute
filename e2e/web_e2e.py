@@ -84,6 +84,12 @@ class Client:
         self.base_url = base_url
         perms = ["clipboard-read", "clipboard-write"] if clipboard else []
         self.ctx = browser.new_context(permissions=perms, base_url=base_url)
+        # アプリアイコンのバッジ（Badging API）の呼び出しを記録する（headless では表示を確かめられないため）
+        self.ctx.add_init_script("""
+          window.__badges = [];
+          navigator.setAppBadge = (n) => { window.__badges.push(n ?? 'dot'); return Promise.resolve(); };
+          navigator.clearAppBadge = () => { window.__badges.push(0); return Promise.resolve(); };
+        """)
         self.errors = []
         # 意図的なリロード・クローズで中断された fetch を WebKit は "access control checks" としてエラー出力するため、
         # その間のメッセージは数えない
@@ -199,6 +205,11 @@ def run(pw, engine, server, headed):
         c = b.card("音声入力のテキスト")
         expect(c).to_be_visible(timeout=15000)
         expect(c.locator("pre")).to_have_text(msg)
+        # 新着を知らせる: トースト・未処理の強調・件数付きの表題・アイコンのバッジ
+        expect(b.page.locator("#toast")).to_contain_text(f"{tag} A から", timeout=5000)
+        expect(c).to_have_class("unhandled")
+        expect(b.page).to_have_title("(1) つて")
+        assert b.page.evaluate("window.__badges.at(-1)") == 1
         # 受信内容は textContent で描画され、HTML として解釈されない
         assert c.locator("pre b").count() == 0
         if clip:
@@ -206,8 +217,13 @@ def run(pw, engine, server, headed):
             expect(b.page.locator("#toast")).to_contain_text("コピーしました")
             got = b.page.evaluate("navigator.clipboard.readText()")
             assert got == msg, got
+            # 操作後は未処理でなくなる
+            expect(c).not_to_have_class("unhandled", timeout=10000)
+            c.get_by_role("button", name="閉じる").click()
         else:
             c.get_by_role("button", name="閉じる").click()
+        expect(b.page).to_have_title("つて", timeout=10000)
+        assert b.page.evaluate("window.__badges.at(-1)") == 0
         # 送信側の履歴が「受信済み」になる（明示操作で received）
         expect(a.page.locator("#history li").first).to_contain_text("受信済み", timeout=15000)
 
@@ -291,6 +307,7 @@ def run(pw, engine, server, headed):
         assert b.endpoint_id() == bid
         c = b.card("オフライン中に送ったテキスト")
         expect(c).to_be_visible(timeout=15000)
+        expect(b.page.locator("#toast")).to_contain_text("未処理の受信が 1 件あります", timeout=5000)
         # 操作するまでは Backend に残る: リロードしても消えない
         b.reload()
         c = b.card("オフライン中に送ったテキスト")

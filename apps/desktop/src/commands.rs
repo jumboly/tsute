@@ -44,6 +44,7 @@ pub struct UiState {
     credential_store: String,
     insecure_credentials: bool,
     download_dir: Option<PathBuf>,
+    last_receiver: Option<String>,
     login_item: String,
     version: String,
 }
@@ -73,6 +74,7 @@ pub async fn get_state(app: AppHandle, st: State<'_, AppState>) -> CmdResult<UiS
         credential_store: st.secrets.describe(),
         insecure_credentials: st.args.insecure_file_credentials,
         download_dir: c.as_ref().map(|c| c.download_dir()),
+        last_receiver: cfg.as_ref().and_then(|c| c.last_receiver.clone()),
         login_item,
         version: env!("CARGO_PKG_VERSION").into(),
     })
@@ -305,6 +307,7 @@ pub async fn send_clipboard(st: State<'_, AppState>, index: usize, receiver: Str
         }
     }
     .map_err(es)?;
+    let _ = c.remember_receiver(&receiver);
     Ok(t.transfer_id)
 }
 
@@ -367,6 +370,7 @@ pub async fn send_files(st: State<'_, AppState>, paths: Vec<PathBuf>, receiver: 
         .send_files(&receiver, TransferKind::Files, files, None)
         .await
         .map_err(es)?;
+    let _ = c.remember_receiver(&receiver);
     Ok(t.transfer_id)
 }
 

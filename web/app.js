@@ -29,6 +29,7 @@ let imageDraft = null; // 送信候補の画像 Payload（Text より優先）
 /** 表示中の受信: transfer_id → { transfer, status, text?, blob?, url?, acted } */
 const inbox = new Map();
 let swReg = null;
+let inboxLoaded = false; // 起動直後の初回取得か（新着の知らせ方を変える）
 
 function el(tag, attrs = {}, ...children) {
   const e = document.createElement(tag);
@@ -365,10 +366,13 @@ async function refreshTransfers() {
   const list = await api.transfers();
   const mine = me.endpoint_id;
   const incoming = list.filter((t) => t.receiver === mine && (t.state === "uploading" || t.state === "uploaded"));
+  const fresh = [];
   for (const t of incoming) {
     const cur = inbox.get(t.transfer_id);
-    if (!cur) inbox.set(t.transfer_id, { transfer: t, status: "new", acted: false });
-    else cur.transfer = t;
+    if (!cur) {
+      inbox.set(t.transfer_id, { transfer: t, status: "new", acted: false });
+      fresh.push(t);
+    } else cur.transfer = t;
   }
   // 送信側が取り消した・期限切れになったものは消す（操作済みで表示中のものは残す）
   for (const [id, item] of inbox) {
@@ -379,6 +383,38 @@ async function refreshTransfers() {
   }
   renderInbox();
   renderHistory(list.filter((t) => t.sender === mine).slice(-10).reverse());
+  announce(fresh);
+}
+
+/**
+ * 新着を知らせる。受信欄は画面上部にあるが、スクロールしていたり入力中だったりすると気づけなかった
+ * （iPhone 実機で実際に見落とした）ため、トーストと受信欄へのスクロールで知らせる。
+ */
+function announce(fresh) {
+  const first = !inboxLoaded;
+  inboxLoaded = true;
+  if (!fresh.length) return;
+  if (first) {
+    toast(`未処理の受信が ${inbox.size} 件あります`);
+  } else if (fresh.length === 1) {
+    toast(`${senderName(fresh[0].sender)} から${KIND[fresh[0].kind]}を受信しました`);
+  } else {
+    toast(`${fresh.length} 件受信しました`);
+  }
+  // 入力中にスクロールさせると入力位置を見失うので、テキスト欄にフォーカスがあるときは動かさない
+  if (document.activeElement !== $("text")) {
+    $("inbox-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+/** ホーム画面のアイコン（対応環境）とタブの表題に未処理件数を出す */
+function updateBadge() {
+  const n = [...inbox.values()].filter((i) => !i.acted).length;
+  document.title = n ? `(${n}) つて` : "つて";
+  try {
+    if (n) navigator.setAppBadge?.(n)?.catch(() => {});
+    else navigator.clearAppBadge?.()?.catch(() => {});
+  } catch { /* 未対応 */ }
 }
 
 async function loadItem(id, item) {
@@ -432,6 +468,7 @@ async function markReceived(id) {
     item.acted = false;
     toast(`受信済みにできませんでした: ${errText(e)}`);
   }
+  renderInbox();
 }
 
 function senderName(id) {
@@ -442,6 +479,7 @@ function renderInbox() {
   const ul = $("inbox");
   $("inbox-section").hidden = inbox.size === 0;
   ul.replaceChildren(...[...inbox.entries()].reverse().map(([id, item]) => renderCard(id, item)));
+  updateBadge();
 }
 
 function renderCard(id, item) {
@@ -451,7 +489,8 @@ function renderCard(id, item) {
   const size = t.text != null ? formatBytes(new TextEncoder().encode(t.text).length) : f ? formatBytes(f.size) : "";
   const dims = f?.media?.width ? ` · ${f.media.width}×${f.media.height}` : "";
   const meta = el("div", { class: "meta" }, `${senderName(t.sender)} から · ${KIND[t.kind]}${dims} · ${size} · ${when}`);
-  const li = el("li", { "data-id": id }, meta);
+  // コピー・保存などの操作をするまでは「未処理」として強調する
+  const li = el("li", { "data-id": id, class: item.acted ? "" : "unhandled" }, meta);
   if (item.status === "waiting" || item.status === "loading" || item.status === "new") {
     li.append(el("p", { class: "muted" }, item.status === "waiting" ? "送信側がアップロード中…" : "取得中…"));
     return li;
