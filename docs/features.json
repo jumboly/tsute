@@ -2,7 +2,8 @@
   "legend": {
     "todo": "未着手",
     "in_progress": "実装中/一部検証",
-    "done": "実装・テスト・実フロー確認・文書化済み"
+    "done": "実装・テスト・実フロー確認・文書化済み",
+    "phase": "省略時は Phase 1。\"W\" は Web / PWA Phase（着手はユーザー判断）"
   },
   "features": [
     {
@@ -242,6 +243,142 @@
       "title": "macOS 上の 2 Endpoint E2E (実アプリ操作)",
       "status": "done",
       "notes": "クラウド経由 14/14 PASS（同一 Mac 2 Endpoint、実アプリ UI、実 Clipboard）"
+    },
+    {
+      "id": "web-hosting",
+      "area": "infra-dev",
+      "title": "/app/ 配信（edge に path behavior + App バケット + App 専用 CI ロール、独立デプロイ）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-capability-model",
+      "area": "auth",
+      "title": "Capability Model（accepts / reach、送信可否判定とサーバー側強制）— ADR-0015",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-enrollment",
+      "area": "auth",
+      "title": "Web Endpoint Enrollment（Web Crypto Ed25519 非抽出鍵 + IndexedDB）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-auth",
+      "area": "auth",
+      "title": "Web の challenge/response 認証（トークンはメモリのみ、Cookie 不使用）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-ws-ticket",
+      "area": "realtime",
+      "title": "Browser 向け WS 認証（一回限り ticket を Sec-WebSocket-Protocol で渡す）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-endpoint-list",
+      "area": "ui",
+      "title": "Endpoint 一覧・送信先選択（受信不可な送信先は理由表示）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-text-input",
+      "area": "ui",
+      "title": "Text 入力（キーボード / Paste / OS 音声入力）→ Preview → Send",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-clip-read",
+      "area": "ui",
+      "title": "Clipboard から読み込み（Async Clipboard API, 対応時のみ）と Paste 経路",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-clip-image",
+      "area": "transfer",
+      "title": "Image Clipboard 送受信（PNG 正規化、Preview/形式/解像度/サイズ、presigned S3 + CORS）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-receive",
+      "area": "ui",
+      "title": "Text/Image 受信表示・明示的 Copy / 保存 / Dismiss（自動反映しない）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-pwa",
+      "area": "ui",
+      "title": "PWA（manifest / icons / standalone / Service Worker / installability）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-ws-foreground",
+      "area": "realtime",
+      "title": "Foreground 時の WebSocket 通知と再同期",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-push",
+      "area": "realtime",
+      "title": "Web Push（VAPID、Subscription 所有権、WS 不在時のみ送信、本文なし Payload）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-offline-recovery",
+      "area": "transfer",
+      "title": "Offline 後・起動時の未受信 Transfer 回収",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-share-target",
+      "area": "ui",
+      "title": "Web Share Target（Android / Chromium のみ、Progressive Enhancement）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-security",
+      "area": "security",
+      "title": "Web Security レビュー（CSP / XSS / CSRF / SSRF / ログ）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
+    },
+    {
+      "id": "web-e2e-device",
+      "area": "test",
+      "title": "スマホ実機 E2E（音声入力 → Send → PC で受信 ほか完了条件一式）",
+      "phase": "W",
+      "status": "todo",
+      "notes": ""
     }
   ]
 }

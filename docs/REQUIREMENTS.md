@@ -79,6 +79,37 @@ Clipboard 常時監視・自動 Clipboard 同期・自動ファイル同期は�
 完了後に報告（実装内容・Architecture・採用技術・ADR 一覧・Test と結果・未解決事項・Windows 対応時の注意点・
 Mac での確認手順・必要な外部 DNS 設定）して **停止**。Phase 2（Windows）はユーザーの実機確認後。
 
+## Web / PWA Client（追加要件, 2026-09-27）
+
+原文: `docs/requirements/web-pwa.md` / 技術方針: ADR-0015（Proposed）。
+
+- Native の代替ではない。主用途: スマホ → PC へ Text（特に **OS キーボードの音声入力**）、Browser の Text/Image 送信、
+  未インストール環境からの一時利用、PWA として素早く起動。
+- Endpoint = Browser / PWA インスタンス。既存の Enrollment Key で登録。Browser 内で鍵生成（非抽出 CryptoKey）、
+  共通秘密を埋め込まない。Browser Data 消失時は再 Enrollment でよい。
+- 配置: 同一 FQDN の `/app/`。Blog / App / Backend は path routing で独立デプロイ。FQDN は環境設定から導出。
+- MVP: Enrollment、Endpoint 一覧・選択、Text 入力、Text/Image Clipboard の送受信、明示的 Copy、PWA install、
+  Foreground は WebSocket、Background は Web Push、対応環境で Web Share Target。
+  対象外: Video、大容量ファイル、常駐、常時 WS、iOS Share Target、独自音声認識。
+- 明示的 Send（内容取得 → Preview → 送信先確認 → Send）。受信しても Clipboard に自動反映しない。
+- Clipboard API が無くても Paste で主要機能が使えること。Push が無くても次回起動時に未受信を回収できること。
+- WS / Push は通知であり、Transfer 状態の正は Backend。Push Payload に本文・機密を載せない。
+- Capability（受信可能な Payload・到達手段）で Native / Web の差を表現し、送信側で受信可否を判定する。
+- Web Security（XSS/CSRF/CSP/鍵保存/Push 所有権/リプレイ/なりすまし/認可/CORS/presigned URL/ログ）を確認する。
+
+### Phase 計画
+
+- Web / PWA は Phase 1（macOS）の完了条件に含めない。独立 Phase（Phase W）。
+- Phase 1 完了後、**Windows（Phase 2）と Web / PWA のどちらを先にするかはユーザーが決める**。
+
+### Web / PWA Phase 完了条件（実機確認）
+
+Browser から Enrollment / 再起動・再 Open 後も同一 Endpoint / スマホで PWA 起動 / Text を PC へ送信 /
+**スマホ実機で「OS キーボード音声入力 → Send → PC で受信」** / Text 受信 / 明示的 Copy /
+対応 Browser で Image 送受信 / Foreground で WS 通知 / PWA を閉じた状態で（対応環境で）Web Push /
+Offline 後に未受信を回収 / Android 等で Share Target / 未対応 Browser でも Text 入力・Paste・Send が機能。
+Browser 上で動いただけでは完了としない。
+
 ## ユーザー確認が必要な事項
 
 要件変更 / セキュリティモデル変更 / データ喪失の可能性 / 大きな継続課金 / 新たな契約・Credential /

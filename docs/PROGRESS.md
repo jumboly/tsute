@@ -9,6 +9,9 @@ OS 通知は ad-hoc 署名では不可のため、メニューバーの未確認
 test 環境（AWS 444369845617 / ap-northeast-1）にデプロイ済み。**クラウド経由 E2E 14/14 PASS**。
 Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
+**Web / PWA 追加要件を受領（2026-09-27）。** 原文 `docs/requirements/web-pwa.md`、要約 REQUIREMENTS.md、
+方針 ADR-0015（Proposed）、機能一覧 features.json の `phase: "W"`。実装は未着手。
+
 ### できていること
 - Rust workspace: proto / server-core / server-local / server-lambda / client-core / os / desktop
 - Backend ロジック（認証・転送・通知）、Lambda アダプタ（DynamoDB/S3/API GW）— Lambda は arm64 ビルド確認済み
@@ -23,7 +26,9 @@ Phase 2（Windows）はユーザーの指示があるまで着手しない。
 
 ## 次にやること
 
-1. **[ユーザー判断待ち]** Phase 2（Windows）の着手、GitHub リポジトリの作成（CI/CD の実行）
+1. **[ユーザー判断待ち]** 次の Phase を Windows（Phase 2）と Web / PWA（Phase W）のどちらにするか。
+   GitHub リポジトリの作成（CI/CD の実行）
+   - Phase W 着手時は最初に ADR-0015「着手時に再確認する事項」を調査し、ADR を Accepted にしてから実装する。
 2. chunk size / 並列数の実回線ベンチ
 3. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
    メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
