@@ -99,7 +99,7 @@ async function refreshEndpoints() {
   sel.replaceChildren();
   const others = endpoints.filter((e) => e.endpoint_id !== state.endpoint_id);
   for (const e of others) {
-    sel.append(el("option", { value: e.endpoint_id }, `${e.online ? "● " : "○ "}${e.name}`));
+    sel.append(el("option", { value: e.endpoint_id }, `${e.online ? "● " : "○ "}${e.name}${e.client_kind === "web" ? "（Web）" : ""}`));
   }
   if (others.some((e) => e.endpoint_id === prev)) sel.value = prev;
   if (!others.length) sel.append(el("option", { value: "", disabled: true }, "送信先がありません（他の Endpoint を登録してください）"));
@@ -112,6 +112,19 @@ async function refreshEndpoints() {
 
 function targetName(id) {
   return endpoints.find((e) => e.endpoint_id === id)?.name ?? id;
+}
+
+// 確認画面の候補 → Transfer の種類。送信先の accepts（受信できる Payload, ADR-0015）と照らす
+const CANDIDATE_TRANSFER_KIND = { text: "clipboard_text", image: "clipboard_image", video: "clipboard_video", files: "files" };
+const TRANSFER_KIND_LABEL = { clipboard_text: "テキスト", clipboard_image: "画像", clipboard_video: "動画", files: "ファイル" };
+
+/** 送信先が受け取れないなら理由の文字列、受け取れるなら null。サーバーも同じ判定で拒否する（多層防御） */
+function rejectReason(targetId, kind) {
+  const t = endpoints.find((e) => e.endpoint_id === targetId);
+  // accepts を返さない旧サーバーでは判定できないので、サーバー側の判定に任せる
+  if (!t?.accepts || t.accepts.includes(kind)) return null;
+  const web = t.client_kind === "web" ? "（Web / PWA の Endpoint はテキストと画像のみ受信できます）" : "";
+  return `${t.name} は${TRANSFER_KIND_LABEL[kind]}を受け取れません${web}`;
 }
 
 // ---------------- 履歴 ----------------
@@ -231,6 +244,10 @@ function renderClip() {
     rows.push(["ファイル数", String(c.paths.length)], ["合計", humanSize(c.byte_size)]);
   }
   p.append(el("dl", { "data-testid": "clip-meta" }, rows.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)])));
+  const why = rejectReason($("target").value, CANDIDATE_TRANSFER_KIND[c.kind]);
+  $("clip-reject").hidden = !why;
+  $("clip-reject").textContent = why ?? "";
+  $("clip-send").disabled = !!why;
 }
 
 async function sendClip() {
@@ -267,7 +284,10 @@ async function handleDrop(paths) {
     el("li", {}, el("strong", {}, f.name), el("span", {}, humanSize(f.size)), el("span", { class: "mono path" }, f.path))));
   $("files-rejected").replaceChildren(...r.rejected.map(([p, why]) => el("li", {}, el("span", { class: "mono path" }, p), el("span", {}, why))));
   $("files-target").textContent = targetName($("target").value);
-  $("files-send").disabled = r.files.length === 0;
+  const why = rejectReason($("target").value, "files");
+  $("files-reject").hidden = !why;
+  $("files-reject").textContent = why ?? "";
+  $("files-send").disabled = r.files.length === 0 || !!why;
   show("files");
 }
 
