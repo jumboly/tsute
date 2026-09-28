@@ -431,10 +431,10 @@
     {
       "id": "win-ci-build",
       "area": "infra-dev",
-      "title": "CI で Windows のビルド・テスト・NSIS インストーラ作成",
+      "title": "CI で Windows のビルド・テスト・配布用フォルダ（tsute.exe 単体, インストーラーなし）作成",
       "phase": "2",
       "status": "in_progress",
-      "notes": "ci.yml windows / desktop.yml windows。PR #1 で全ジョブ成功（2026-09-29）、NSIS インストーラを artifact に保存。コード署名なし"
+      "notes": "ci.yml windows / desktop.yml windows。PR #1 で全ジョブ成功（2026-09-29, NSIS 版）。フォルダコピー配布に変更し、dumpbin で追加 DLL 不要を CI で確認。コード署名なし"
     }
   ]
 }

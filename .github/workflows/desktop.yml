@@ -47,11 +47,28 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo install tauri-cli --version "^2" --locked
-      # ユーザー単位でインストールする NSIS インストーラ（管理者権限不要）。WebView2 が無ければ導入する
-      - run: cargo tauri build --bundles nsis
+      # インストーラーは作らず、フォルダごとコピーして使う形にする（画面は exe に埋め込まれ、データ・資格情報・
+      # レジストリはアプリが初回起動時に自分で作るため、インストーラーでしかできない作業がない）
+      - run: cargo tauri build --no-bundle
         working-directory: apps/desktop
+      # フォルダコピーで動くことの確認: VC++ ランタイム（vcruntime140.dll 等）に依存せず、同梱すべき DLL もないこと
+      - name: Check the exe runs without extra DLLs
+        shell: pwsh
+        run: |
+          $exe = "target/release/tsute.exe"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products * -find "VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          $deps = & $dumpbin /nologo /dependents $exe | Where-Object { $_ -match '^\s+\S+\.dll$' } | ForEach-Object { $_.Trim() }
+          if (-not $deps) { throw "could not read imports of tsute.exe" }
+          Write-Output "imports: $($deps -join ', ')"
+          # Windows に標準で入っていない DLL（VC++ ランタイム・WebView2Loader）に依存していたら失敗させる
+          $bad = $deps | Where-Object { $_ -match '^(vcruntime|msvcp|WebView2Loader)' }
+          if ($bad) { throw "tsute.exe depends on: $($bad -join ', ')" }
+          New-Item -ItemType Directory -Force Tsute-windows | Out-Null
+          Copy-Item $exe Tsute-windows/tsute.exe
+          Get-ChildItem Tsute-windows
       # 現状はコード署名なし（SmartScreen の警告が出る）。配布時は署名を追加する（docs/PROGRESS.md 参照）
       - uses: actions/upload-artifact@v4
         with:
           name: Tsute-windows
-          path: target/release/bundle/nsis/*.exe
+          path: Tsute-windows/

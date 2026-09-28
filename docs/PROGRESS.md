@@ -16,9 +16,9 @@ Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 
 - `tsute-os` の Windows 実装（Clipboard / Toast 通知 / Run キー自動起動 / Explorer 表示）、資格情報マネージャー、
   %LOCALAPPDATA%、通知領域の常駐、名前付きパイプのオートメーション。
 - CI: `ci.yml` の `windows`（clippy / テスト / 実 Clipboard テスト / 資格情報テスト）、`desktop.yml` の `windows`
-  （NSIS インストーラ）。PR #1（ブランチ `phase2-windows`）で実行し **全ジョブ成功（2026-09-29）**:
+  （当初 NSIS インストーラ → 2026-09-29 ユーザー判断で**フォルダコピー配布**（`tsute.exe` 単体）に変更）。PR #1（ブランチ `phase2-windows`）で実行し **全ジョブ成功（2026-09-29）**:
   Windows で clippy 警告なし、client-core 結合テスト 10/10（ローカル開発サーバー相手の実転送）、
-  資格情報マネージャー 1/1、実 Clipboard 4/4、DIB 変換 6/6。artifact `Tsute-windows`（NSIS, 約 5.3MB）。
+  資格情報マネージャー 1/1、実 Clipboard 4/4、DIB 変換 6/6。（この時点の artifact は NSIS, 約 5.3MB）
 - **Windows 実機での操作確認は未実施**（ここまでが今回の範囲）。
 
 GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）。
@@ -56,7 +56,7 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
    （入力中は動かさない）、未処理カードを「新着」として強調、表題とホーム画面アイコンに未処理件数（Badging API。
    Push 受信時は件数不明のため印だけ）
    (b) Mac: 最後に送信した相手を profile.json（last_receiver）に保存し、起動直後の送信先の初期値にする
-2. **Phase 2（Windows）の実機確認**（ユーザー）: CI の artifact `Tsute-windows` のインストーラで導入し、
+2. **Phase 2（Windows）の実機確認**（ユーザー）: CI の artifact `Tsute-windows` のフォルダを任意の場所にコピーして `tsute.exe` を起動し、
    登録 → Clipboard（Text / 画像 / Explorer でコピーしたファイル）送受信 → 「Clipboard にコピー」で他アプリへ貼り付け →
    Explorer からの D&D → 通知の表示とクリック → 「Windows の起動時に開始」→ 再起動後にウィンドウなしで常駐、を確認。
    未実装: 同じプロファイルの再起動で既存ウィンドウを開く経路、動画のメタデータ・サムネイル、Windows 用 E2E ドライバ、コード署名。
