@@ -106,6 +106,11 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 
 ## 判断ログ（ADR 化しない小さなもの）
 
+- CI の tauri-cli はソース（crates.io, `--locked`）からビルドし、版（`desktop.yml` の `TAURI_CLI_VERSION`）ごとにバイナリを
+  `actions/cache` で保存する。taiki-e/install-action は tauri-cli を公式サポートしておらず cargo-binstall 経由になり、
+  チェックサム検証の対象外・macOS では第三者ビルドが入り得るため使わない（2026-09-29 ユーザー判断）。
+  Windows ジョブは約 20 分 → 約 9 分（キャッシュヒット時）。
+
 - Web Client はビルドなし ES Modules（npm 依存ゼロ）。proto との整合は実サーバー相手の Playwright E2E で担保（ADR-0015 §1）。
 - Web Push は空 Payload（暗号化不要・内容が push service に渡らない）。`/api/push/config` は無効時も 200 + null。
 - Push Subscription の上限超過時の「古い順」はマイクロ秒の登録時刻で決める（秒・ミリ秒では同着が出た）。
