@@ -6093,6 +6093,7 @@ dependencies = [
  "tsute-server-core",
  "tsute-server-local",
  "url",
+ "windows",
  "zeroize",
 ]
 
@@ -6129,9 +6130,11 @@ dependencies = [
  "objc2-service-management",
  "objc2-uniform-type-identifiers",
  "objc2-user-notifications",
+ "png 0.18.1",
  "serde",
  "tempfile",
  "tracing",
+ "windows",
 ]
 
 [[package]]

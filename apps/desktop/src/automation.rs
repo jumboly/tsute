@@ -1,7 +1,7 @@
 //! E2E テスト用のオートメーション経路（ADR-0013）。
 //!
 //! macOS の Accessibility 権限なしでも実際の UI を操作して E2E を回すため、
-//! プロファイルディレクトリ内の Unix ドメインソケット（0600）で JSON 行コマンドを受け付け、
+//! プロファイルディレクトリ内の Unix ドメインソケット（0600）/ Windows では名前付きパイプで JSON 行コマンドを受け付け、
 //! WebView 内の DOM 操作（ボタンのクリック等）として実行する。UI → コマンド → Core → Cloud の経路は本番と同一。
 //! `--automation` フラグと `TSUTE_AUTOMATION=1` の両方がないと起動しない。
 
@@ -78,16 +78,49 @@ async fn handle(app: &AppHandle, req: Value) -> Result<Value, String> {
     }
 }
 
+/// 1 接続分の JSON 行コマンドを処理する（Unix ソケットと名前付きパイプで共通）
+async fn serve<S>(app: AppHandle, stream: S)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
+{
+    let (r, mut w) = tokio::io::split(stream);
+    let mut lines = BufReader::new(r).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        let resp = match serde_json::from_str::<Value>(&line) {
+            Ok(req) => match handle(&app, req).await {
+                Ok(v) => json!({"ok": true, "value": v}),
+                Err(e) => json!({"ok": false, "error": e}),
+            },
+            Err(e) => json!({"ok": false, "error": e.to_string()}),
+        };
+        if w.write_all(format!("{resp}\n").as_bytes()).await.is_err() {
+            break;
+        }
+    }
+}
+
+fn path_hash(p: &std::path::Path) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    p.hash(&mut h);
+    h.finish()
+}
+
 /// Unix ソケットのパス長上限（macOS は 104 バイト）を超える場合は短い一時パスに逃がし、
 /// 実際のパスを `<profile>/automation.sock.path` に書いてドライバが見つけられるようにする
+#[cfg(unix)]
 fn resolve_socket_path(preferred: &std::path::Path) -> std::path::PathBuf {
     if preferred.as_os_str().len() < 100 {
         return preferred.to_path_buf();
     }
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    preferred.hash(&mut h);
-    std::env::temp_dir().join(format!("tsute-auto-{:016x}.sock", h.finish()))
+    std::env::temp_dir().join(format!("tsute-auto-{:016x}.sock", path_hash(preferred)))
+}
+
+/// 名前付きパイプはファイルシステム上に置けないので、プロファイルのパスから名前を決める。
+/// ドライバは `<profile>/automation.sock.path` から名前を読む（Unix と同じ手順）
+#[cfg(windows)]
+fn resolve_socket_path(preferred: &std::path::Path) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!(r"\\.\pipe\tsute-auto-{:016x}", path_hash(preferred)))
 }
 
 pub fn start(app: &AppHandle, preferred: std::path::PathBuf) {
@@ -99,41 +132,51 @@ pub fn start(app: &AppHandle, preferred: std::path::PathBuf) {
     );
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = std::fs::remove_file(&socket);
-        let listener = match tokio::net::UnixListener::bind(&socket) {
-            Ok(l) => l,
-            Err(e) => {
-                tracing::error!(error = %e, "automation socket bind failed");
-                return;
-            }
-        };
         #[cfg(unix)]
         {
+            let _ = std::fs::remove_file(&socket);
+            let listener = match tokio::net::UnixListener::bind(&socket) {
+                Ok(l) => l,
+                Err(e) => {
+                    tracing::error!(error = %e, "automation socket bind failed");
+                    return;
+                }
+            };
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600));
+            tracing::warn!(socket = %socket.display(), "AUTOMATION ENABLED (test use only)");
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    continue;
+                };
+                tauri::async_runtime::spawn(serve(app.clone(), stream));
+            }
         }
-        tracing::warn!(socket = %socket.display(), "AUTOMATION ENABLED (test use only)");
-        loop {
-            let Ok((stream, _)) = listener.accept().await else {
-                continue;
-            };
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let (r, mut w) = stream.into_split();
-                let mut lines = BufReader::new(r).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    let resp = match serde_json::from_str::<Value>(&line) {
-                        Ok(req) => match handle(&app, req).await {
-                            Ok(v) => json!({"ok": true, "value": v}),
-                            Err(e) => json!({"ok": false, "error": e}),
-                        },
-                        Err(e) => json!({"ok": false, "error": e.to_string()}),
-                    };
-                    if w.write_all(format!("{resp}\n").as_bytes()).await.is_err() {
-                        break;
+        #[cfg(windows)]
+        {
+            use tokio::net::windows::named_pipe::ServerOptions;
+            // 既定のセキュリティ記述子では、書き込み（= コマンド送信）ができるのは作成したユーザーと
+            // 管理者・SYSTEM だけ。リモートからの接続は拒否し、最初のインスタンスは他プロセスの先取りを防ぐ
+            let mut first = true;
+            tracing::warn!(pipe = %socket.display(), "AUTOMATION ENABLED (test use only)");
+            loop {
+                let server = match ServerOptions::new()
+                    .first_pipe_instance(first)
+                    .reject_remote_clients(true)
+                    .create(&socket)
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!(error = %e, "automation pipe create failed");
+                        return;
                     }
+                };
+                first = false;
+                if server.connect().await.is_err() {
+                    continue;
                 }
-            });
+                tauri::async_runtime::spawn(serve(app.clone(), server));
+            }
         }
     });
 }

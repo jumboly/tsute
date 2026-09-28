@@ -46,6 +46,8 @@ pub struct UiState {
     download_dir: Option<PathBuf>,
     last_receiver: Option<String>,
     login_item: String,
+    /// UI の文言（Finder / Explorer 等）を OS に合わせるため
+    platform: &'static str,
     version: String,
 }
 
@@ -76,6 +78,7 @@ pub async fn get_state(app: AppHandle, st: State<'_, AppState>) -> CmdResult<UiS
         download_dir: c.as_ref().map(|c| c.download_dir()),
         last_receiver: cfg.as_ref().and_then(|c| c.last_receiver.clone()),
         login_item,
+        platform: if cfg!(windows) { "windows" } else { "macos" },
         version: env!("CARGO_PKG_VERSION").into(),
     })
 }

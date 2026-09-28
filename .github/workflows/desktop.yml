@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     paths: ["apps/**", "crates/**", "Cargo.lock", ".github/workflows/desktop.yml"]
+  # パッケージングの失敗（アイコン・バンドル設定など）をマージ前に見つけるため PR でも作る
+  pull_request:
+    paths: ["apps/**", "crates/**", "Cargo.lock", ".github/workflows/desktop.yml"]
   workflow_dispatch:
     inputs:
       environment:
@@ -33,3 +36,22 @@ jobs:
         with:
           name: Tsute-macos
           path: target/release/bundle/macos/Tsute-macos.zip
+
+  windows:
+    runs-on: windows-latest
+    environment: ${{ inputs.environment || 'test' }}
+    env:
+      TSUTE_DEFAULT_BASE_URL: ${{ vars.APP_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install tauri-cli --version "^2" --locked
+      # ユーザー単位でインストールする NSIS インストーラ（管理者権限不要）。WebView2 が無ければ導入する
+      - run: cargo tauri build --bundles nsis
+        working-directory: apps/desktop
+      # 現状はコード署名なし（SmartScreen の警告が出る）。配布時は署名を追加する（docs/PROGRESS.md 参照）
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tsute-windows
+          path: target/release/bundle/nsis/*.exe

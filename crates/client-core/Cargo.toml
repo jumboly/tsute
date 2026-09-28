@@ -25,6 +25,9 @@ zeroize = "1"
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
+
 [dev-dependencies]
 tsute-server-local = { path = "../server-local" }
 tsute-server-core = { path = "../server-core" }

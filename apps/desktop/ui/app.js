@@ -175,7 +175,7 @@ function renderItem(it) {
     btns.append(el("button", { class: "small primary", "data-testid": "apply", onclick: () => applyClipboard(t.transfer_id) },
       t.kind === "files" || t.kind === "clipboard_video" ? "Clipboard にコピー（ファイル）" : "Clipboard にコピー"));
     if (t.kind !== "files") btns.append(el("button", { class: "small", "data-testid": "save", onclick: () => saveAs(t.transfer_id) }, "保存…"));
-    if (t.files.length && it.files_exist) btns.append(el("button", { class: "small", onclick: () => call("reveal", { transferId: t.transfer_id }) }, "Finder で表示"));
+    if (t.files.length && it.files_exist) btns.append(el("button", { class: "small", onclick: () => call("reveal", { transferId: t.transfer_id }) }, state.platform === "windows" ? "Explorer で表示" : "Finder で表示"));
   }
   if ((it.status === "active" || it.status === "uploaded")) {
     btns.append(el("button", { class: "small danger", "data-testid": "cancel", onclick: () => cancelTransfer(t.transfer_id) }, "取消"));
@@ -318,11 +318,13 @@ async function openSettings() {
   $("set-version").textContent = state.version;
   $("set-name").value = state.endpoint_name;
   const login = $("set-login");
+  $("set-login-label").textContent = state.platform === "windows" ? "Windows の起動時に開始" : "ログイン時に起動";
   login.checked = state.login_item === "enabled";
   login.disabled = state.login_item === "unavailable";
   $("set-login-status").textContent = {
     enabled: "有効", not_registered: "無効", requires_approval: "システム設定で承認が必要です",
     unavailable: ".app として起動した場合のみ設定できます", not_found: "無効",
+    disabled_by_user: "Windows の設定（スタートアップ アプリ）で無効になっています。オンにすると有効に戻します",
   }[state.login_item] ?? state.login_item;
   refreshEndpoints();
   show("settings");
