@@ -1,6 +1,6 @@
 # 進捗
 
-最終更新: 2026-09-27
+最終更新: 2026-09-28
 
 ## 現在地
 
@@ -12,7 +12,14 @@ test 環境（AWS 444369845617 / ap-northeast-1）にデプロイ済み。**ク�
 独自ドメイン経由のクラウド E2E 14/14 PASS（2 回連続）。
 Blog リポジトリの GitHub Actions デプロイ（OIDC）が成功し、独自ドメインで Astro 版 Blog を配信中。
 Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 404）を返す。API のエラー JSON は不変（確認済み）。
-Phase 2（Windows）はユーザーの指示があるまで着手しない。
+**Phase 2（Windows）着手（2026-09-28, ユーザー指示「着手して CI ビルドまで」）。** ADR-0016、features.json の `phase: "2"`。
+- `tsute-os` の Windows 実装（Clipboard / Toast 通知 / Run キー自動起動 / Explorer 表示）、資格情報マネージャー、
+  %LOCALAPPDATA%、通知領域の常駐、名前付きパイプのオートメーション。
+- CI: `ci.yml` の `windows`（clippy / テスト / 実 Clipboard テスト / 資格情報テスト）、`desktop.yml` の `windows`
+  （NSIS インストーラ）。PR #1（ブランチ `phase2-windows`）で実行。
+- **Windows 実機での操作確認は未実施**（ここまでが今回の範囲）。
+
+GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）。
 
 **Phase W（Web / PWA）実装済み・iPhone 実機確認済み（2026-09-27）。Android は端末が無く保留。** ユーザー指示で Windows より先に着手。
 ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pwa.md`、機能一覧 features.json の `phase: "W"`。
@@ -47,12 +54,14 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
    （入力中は動かさない）、未処理カードを「新着」として強調、表題とホーム画面アイコンに未処理件数（Badging API。
    Push 受信時は件数不明のため印だけ）
    (b) Mac: 最後に送信した相手を profile.json（last_receiver）に保存し、起動直後の送信先の初期値にする
-2. Phase 2（Windows）はユーザーの指示があるまで着手しない。
-   GitHub リポジトリの作成（CI/CD の実行。`web-e2e` ジョブと `deploy-web.yml` を追加済み・未実行）
+2. **Phase 2（Windows）の実機確認**（ユーザー）: CI の artifact `Tsute-windows` のインストーラで導入し、
+   登録 → Clipboard（Text / 画像 / Explorer でコピーしたファイル）送受信 → 「Clipboard にコピー」で他アプリへ貼り付け →
+   Explorer からの D&D → 通知の表示とクリック → 「Windows の起動時に開始」→ 再起動後にウィンドウなしで常駐、を確認。
+   未実装: 同じプロファイルの再起動で既存ウィンドウを開く経路、動画のメタデータ・サムネイル、Windows 用 E2E ドライバ、コード署名。
 3. chunk size / 並列数の実回線ベンチ
 4. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
    メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
-5. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行。作成したら
+5. GitHub リポジトリは作成済み（2026-09-28）。
    `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` を確認し、immutable subject が有効なら
    bootstrap の `GitHubAppRepo` を `owner@ownerId/repo@repoId` 形式で更新する（ADR-0010。Blog ロールで実際に踏んだ）
 6. Phase 1 完了報告

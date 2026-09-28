@@ -27,6 +27,25 @@ cargo test -p tsute-os --test clipboard_macos -- --ignored --test-threads=1
 Text（pbcopy）/ PNG / TIFF のみ（PNG 正規化）/ 動画 file URL / 動画実データ / 複数ファイル。
 実行前のテキストを退避・復元する。
 
+Windows（ADR-0016）:
+
+```powershell
+cargo test -p tsute-os --test clipboard_windows -- --ignored --test-threads=1
+```
+
+Text（PowerShell の Set-Clipboard / Get-Clipboard, CRLF⇔LF）/ PNG 書き込み→読み取り（"PNG" と CF_DIB）/
+CF_DIB のみ（PNG 変換）/ 複数ファイル・動画ファイル（CF_HDROP, WinForms から見えること）。
+CI の `windows` ジョブでは毎回実行する（ランナーは使い捨てのため）。DIB ⇔ PNG 変換の単体テスト
+（`crates/os/src/dib.rs`）は macOS でも `cargo test -p tsute-os` で動く。
+
+### Windows のビルド（Phase 2）
+
+- CI: `.github/workflows/ci.yml` の `windows`（clippy / テスト / 実 Clipboard / 資格情報マネージャー）と
+  `.github/workflows/desktop.yml` の `windows`（NSIS インストーラ `Tsute_<ver>_x64-setup.exe` を artifact `Tsute-windows` に保存）。
+- 手元の Windows: Rust（MSVC）と Visual Studio Build Tools（C++）が必要。`cd apps/desktop && cargo tauri build --bundles nsis`。
+- macOS からのクロスビルドはできない（aws-lc-sys・SQLite が C のため Windows SDK が要る）。
+  `cargo clippy -p tsute-os --target x86_64-pc-windows-msvc` だけは macOS でも通る（純 Rust のため）。
+
 ## 3. デスクトップ E2E（同一 Mac で 2 Endpoint）
 
 ```sh

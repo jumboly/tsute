@@ -19,3 +19,4 @@
     OS からの Drop イベント配送は手動確認項目とする。
   - メニューバーのクリック・OS 通知の表示/クリック・ログイン項目の実ログイン: 手動確認項目。
 - ドライバは `e2e/driver.py`、シナリオは `e2e/run_e2e.py`（local / cloud 両対応）。
+- Windows では Unix ソケットの代わりに名前付きパイプ（パイプ名は同じく `automation.sock.path` に書く。ADR-0016）。

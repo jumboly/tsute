@@ -1,6 +1,6 @@
 # ADR-0003: Clipboard 形式の正規化（macOS）
 
-- 状態: Accepted（2026-09-27）。Windows は Phase 2 で追記。
+- 状態: Accepted（2026-09-27）。Windows の形式対応は ADR-0016。
 
 ## 背景
 

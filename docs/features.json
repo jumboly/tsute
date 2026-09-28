@@ -3,7 +3,7 @@
     "todo": "未着手",
     "in_progress": "実装中/一部検証",
     "done": "実装・テスト・実フロー確認・文書化済み",
-    "phase": "省略時は Phase 1。\"W\" は Web / PWA Phase（着手はユーザー判断）"
+    "phase": "省略時は Phase 1。\"W\" は Web / PWA Phase、\"2\" は Windows（Phase 2）"
   },
   "features": [
     {
@@ -379,6 +379,62 @@
       "phase": "W",
       "status": "in_progress",
       "notes": "2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA）で確認済み: 登録・同一 Endpoint の維持・音声入力 → Mac・Mac → PWA・画像の双方向・閉じた状態の Push・Offline 後の回収。Android（Share Target）は端末が無く保留、Firefox は未確認"
+    },
+    {
+      "id": "win-clipboard",
+      "area": "os",
+      "title": "Windows Clipboard の読み取り/正規化/書き込み（CF_UNICODETEXT / PNG / CF_DIB / CF_HDROP）— ADR-0016",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み。DIB⇔PNG 変換の単体テスト（macOS でも実行）と実 Clipboard テスト 4 件（CI windows ジョブ）。Windows 実機での他アプリとの貼り付け確認は未実施。動画の解像度・長さ・サムネイルは未取得"
+    },
+    {
+      "id": "win-credential",
+      "area": "auth",
+      "title": "Windows 資格情報マネージャーに Endpoint 鍵を保存（LOCAL_MACHINE persist）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み。読み書き・削除のテストを CI（windows-latest）で実行。実機未確認"
+    },
+    {
+      "id": "win-notify",
+      "area": "os",
+      "title": "Windows Toast 通知（AUMID を HKCU に登録、クリックで該当の受信へ）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み・ビルドのみ確認。表示とクリックは実機で要確認"
+    },
+    {
+      "id": "win-autostart",
+      "area": "desktop",
+      "title": "Windows の自動起動（HKCU Run キー、OS 側で無効化された状態の表示）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み・ビルドのみ確認。実機で再起動後の起動（ウィンドウなし）を要確認"
+    },
+    {
+      "id": "win-tray",
+      "area": "desktop",
+      "title": "通知領域の常駐（左クリックでウィンドウ・右クリックでメニュー、タスクバーの明暗でアイコン切替）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み・ビルドのみ確認。同じプロファイルの再起動で既存ウィンドウを開く経路は未実装"
+    },
+    {
+      "id": "win-automation",
+      "area": "infra-dev",
+      "title": "オートメーション経路の名前付きパイプ化（E2E 用）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み・ビルドのみ確認。Windows 用 E2E ドライバは未作成"
+    },
+    {
+      "id": "win-ci-build",
+      "area": "infra-dev",
+      "title": "CI で Windows のビルド・テスト・NSIS インストーラ作成",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "ci.yml windows / desktop.yml windows。コード署名なし"
     }
   ]
 }
