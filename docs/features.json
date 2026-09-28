@@ -386,7 +386,7 @@
       "title": "Windows Clipboard の読み取り/正規化/書き込み（CF_UNICODETEXT / PNG / CF_DIB / CF_HDROP）— ADR-0016",
       "phase": "2",
       "status": "in_progress",
-      "notes": "実装済み。DIB⇔PNG 変換の単体テスト（macOS でも実行）と実 Clipboard テスト 4 件（CI windows ジョブ）。Windows 実機での他アプリとの貼り付け確認は未実施。動画の解像度・長さ・サムネイルは未取得"
+      "notes": "実装済み。DIB⇔PNG 変換の単体テスト（macOS でも実行）と実 Clipboard テスト 4/4 が CI の windows-latest で成功。Windows 実機での他アプリとの貼り付け確認は未実施。動画の解像度・長さ・サムネイルは未取得"
     },
     {
       "id": "win-credential",
@@ -434,7 +434,7 @@
       "title": "CI で Windows のビルド・テスト・NSIS インストーラ作成",
       "phase": "2",
       "status": "in_progress",
-      "notes": "ci.yml windows / desktop.yml windows。コード署名なし"
+      "notes": "ci.yml windows / desktop.yml windows。PR #1 で全ジョブ成功（2026-09-29）、NSIS インストーラを artifact に保存。コード署名なし"
     }
   ]
 }
