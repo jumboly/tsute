@@ -33,6 +33,18 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
+/// Clipboard の UTF-16LE（NUL 終端）を文字列にする
+fn utf16_until_nul(bytes: &[u8]) -> String {
+    let units: Vec<u16> = bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&c| u16::from_le_bytes(c))
+        .take_while(|&u| u != 0)
+        .collect();
+    String::from_utf16_lossy(&units)
+}
+
 fn write_tmp(tmp: &Path, name: &str, data: &[u8]) -> Result<PathBuf, String> {
     std::fs::create_dir_all(tmp).map_err(|e| e.to_string())?;
     let p = tmp.join(name);
@@ -262,12 +274,7 @@ pub fn read_clipboard(tmp: &Path) -> Result<ClipSnapshot, String> {
 
     // 2. テキスト。Windows の改行（CRLF）は LF にそろえて送る（受信側の OS に依らず同じ内容にするため）
     if let Some(bytes) = cb.get(CF_UNICODETEXT.0 as u32) {
-        let units: Vec<u16> = bytes
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
-            .take_while(|&u| u != 0)
-            .collect();
-        let text = String::from_utf16_lossy(&units).replace("\r\n", "\n");
+        let text = utf16_until_nul(&bytes).replace("\r\n", "\n");
         if !text.is_empty() {
             candidates.push(ClipCandidate::Text { text });
         }
@@ -587,12 +594,7 @@ pub fn write_raw_for_test(format: &str, bytes: &[u8]) -> Result<(), String> {
 pub fn read_text_for_test() -> Option<String> {
     let cb = Clipboard::open().ok()?;
     let bytes = cb.get(CF_UNICODETEXT.0 as u32)?;
-    let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-        .take_while(|&u| u != 0)
-        .collect();
-    Some(String::from_utf16_lossy(&units))
+    Some(utf16_until_nul(&bytes))
 }
 
 /// テスト専用: CF_DIB を載せる（スクリーンショット等、PNG 形式を伴わない画像のコピーを再現するため）

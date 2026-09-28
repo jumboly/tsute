@@ -4,7 +4,7 @@
 |---|---|---|
 | [0001](0001-desktop-framework.md) | Desktop framework: Tauri 2 + Rust core + 必要箇所は OS ネイティブ API | Accepted |
 | [0002](0002-endpoint-auth.md) | Endpoint 認証: Ed25519 + 一回限り Enrollment Key + IAM 保護の発行経路 | Accepted |
-| [0003](0003-clipboard-normalization.md) | Clipboard 形式の正規化（macOS） | Accepted |
+| [0003](0003-clipboard-normalization.md) | Clipboard 形式の正規化（macOS。Windows は 0016） | Accepted |
 | [0004](0004-chunked-transfer.md) | 転送: アプリ側 chunk・独立 Object・chunk size/並列数・checksum | Accepted |
 | [0005](0005-resume.md) | Resume 方式（サーバー正/ローカル正の分担） | Accepted |
 | [0006](0006-dynamodb-model.md) | DynamoDB データモデル（単一テーブル） | Accepted |
@@ -17,3 +17,4 @@
 | [0013](0013-desktop-e2e-automation.md) | Desktop E2E: アプリ内オートメーション経路 | Accepted |
 | [0014](0014-unread-tray-badge.md) | 受信の知らせ方: メニューバーアイコンの未確認印（OS 通知の代替） | Accepted |
 | [0015](0015-web-pwa-client.md) | Web / PWA Client のアーキテクチャと Capability Model | Accepted |
+| [0016](0016-windows-desktop.md) | Windows デスクトップ統合（Clipboard・通知・自動起動・資格情報・トレイ） | Accepted（実機未確認） |

@@ -87,7 +87,7 @@ pub fn dib_to_rgba(dib: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
         };
         let p = dib.get(off..off + n * 4)?;
         off += n * 4;
-        p.chunks_exact(4).map(|c| [c[2], c[1], c[0], 255]).collect()
+        p.as_chunks::<4>().0.iter().map(|c| [c[2], c[1], c[0], 255]).collect()
     } else {
         Vec::new()
     };
@@ -123,8 +123,8 @@ pub fn dib_to_rgba(dib: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     }
     // 32bpp BI_RGB の 4 バイト目は「未使用（0）」のアプリが多い。全画素 0 なら不透明とみなす
     // （そのまま使うと全面透明な画像になるため。ブラウザ等の Clipboard 実装と同じ扱い）
-    if bpp == 32 && am == 0 && out.chunks_exact(4).all(|p| p[3] == 0) {
-        out.chunks_exact_mut(4).for_each(|p| p[3] = 255);
+    if bpp == 32 && am == 0 && out.as_chunks::<4>().0.iter().all(|p| p[3] == 0) {
+        out.as_chunks_mut::<4>().0.iter_mut().for_each(|p| p[3] = 255);
     }
     Some((w, h, out))
 }
@@ -159,8 +159,18 @@ pub fn png_to_rgba(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     let buf = &buf[..info.buffer_size()];
     let rgba: Vec<u8> = match info.color_type {
         png::ColorType::Rgba => buf.to_vec(),
-        png::ColorType::Rgb => buf.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
-        png::ColorType::GrayscaleAlpha => buf.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
+        png::ColorType::Rgb => buf
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        png::ColorType::GrayscaleAlpha => buf
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .flat_map(|p| [p[0], p[0], p[0], p[1]])
+            .collect(),
         png::ColorType::Grayscale => buf.iter().flat_map(|&g| [g, g, g, 255]).collect(),
         png::ColorType::Indexed => return None,
     };
