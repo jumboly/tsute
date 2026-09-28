@@ -16,7 +16,9 @@ Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 
 - `tsute-os` の Windows 実装（Clipboard / Toast 通知 / Run キー自動起動 / Explorer 表示）、資格情報マネージャー、
   %LOCALAPPDATA%、通知領域の常駐、名前付きパイプのオートメーション。
 - CI: `ci.yml` の `windows`（clippy / テスト / 実 Clipboard テスト / 資格情報テスト）、`desktop.yml` の `windows`
-  （NSIS インストーラ）。PR #1（ブランチ `phase2-windows`）で実行。
+  （NSIS インストーラ）。PR #1（ブランチ `phase2-windows`）で実行し **全ジョブ成功（2026-09-29）**:
+  Windows で clippy 警告なし、client-core 結合テスト 10/10（ローカル開発サーバー相手の実転送）、
+  資格情報マネージャー 1/1、実 Clipboard 4/4、DIB 変換 6/6。artifact `Tsute-windows`（NSIS, 約 5.3MB）。
 - **Windows 実機での操作確認は未実施**（ここまでが今回の範囲）。
 
 GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）。
@@ -74,6 +76,10 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 - 通知: authorization granted=false（要手動許可・表示確認）
 
 ## 既知の問題 / 注意
+
+- CI の `web-e2e`（WebKit）の `no_console_errors` が 1 度だけ失敗した（中断された fetch が
+  「access control checks」のコンソールエラーとして記録された）。Web / サーバーのコードは無変更で、再実行で成功。再発したら調べる。
+- CI の Rust は stable 追従（2026-09-29 時点 1.98.1）。手元が古いと新しい clippy lint を見逃すので `rustup update stable` しておく。
 
 - Web: Playwright の WebKit ビルドでは `pushManager.getSubscription()` がページごと固まる。通知許可が無いときは
   pushManager に触れない実装にして回避（許可が無ければ有効な購読は存在しないため、実 Safari でも妥当）。
