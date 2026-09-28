@@ -3,7 +3,7 @@
 ## 前提
 
 - Rust stable（1.95+）、macOS 13+（開発機は macOS 27.0 / arm64 で確認）
-- Tauri CLI: `cargo install tauri-cli --version "^2" --locked`
+- Tauri CLI: `cargo install tauri-cli --version "=2.12.0" --locked`（CI と同じ版。CI は `desktop.yml` の `TAURI_CLI_VERSION`）
 - Lambda ビルド: `uv tool install cargo-lambda`（zig 同梱。`infra/deploy.sh` が自動で PATH に追加）
 - AWS CLI v2（デプロイ・管理操作時のみ）
 
