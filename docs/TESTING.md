@@ -41,8 +41,10 @@ CI の `windows` ジョブでは毎回実行する（ランナーは使い捨て
 ### Windows のビルド（Phase 2）
 
 - CI: `.github/workflows/ci.yml` の `windows`（clippy / テスト / 実 Clipboard / 資格情報マネージャー）と
-  `.github/workflows/desktop.yml` の `windows`（NSIS インストーラ `Tsute_<ver>_x64-setup.exe` を artifact `Tsute-windows` に保存）。
-- 手元の Windows: Rust（MSVC）と Visual Studio Build Tools（C++）が必要。`cd apps/desktop && cargo tauri build --bundles nsis`。
+  `.github/workflows/desktop.yml` の `windows`（`tsute.exe` を入れたフォルダを artifact `Tsute-windows` に保存。
+  インストーラーなし・フォルダコピーで使う。ADR-0016）。
+- 手元の Windows: Rust（MSVC）と Visual Studio Build Tools（C++）が必要。`cd apps/desktop && cargo tauri build --no-bundle`
+  → `target/release/tsute.exe`（素の `cargo build` では画面が埋め込まれないので Tauri CLI を使う）。
 - macOS からのクロスビルドはできない（aws-lc-sys・SQLite が C のため Windows SDK が要る）。
   `cargo clippy -p tsute-os --target x86_64-pc-windows-msvc` だけは macOS でも通る（純 Rust のため）。
 

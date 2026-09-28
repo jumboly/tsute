@@ -89,8 +89,18 @@ Unix ソケットの代わりに名前付きパイプ `\\.\pipe\tsute-auto-<プ�
 
 - CI: `windows-latest` で clippy / テスト（`tsute-server-lambda` を除くワークスペース）と、実 Clipboard テスト
   （ランナーは使い捨てなので `#[ignore]` のテストも回す）。資格情報マネージャーの読み書きテストも CI で実行する。
-- `desktop.yml`: `cargo tauri build --bundles nsis`。ユーザー単位（管理者権限不要）の NSIS インストーラ。
-  WebView2 が無ければインストーラが導入する。アイコンは `icons/icon.ico`（`icon.png` から生成）。
+- **配布はフォルダコピー（インストーラーなし）**（2026-09-29 ユーザー判断）。`desktop.yml` は `cargo tauri build --no-bundle`
+  で `tsute.exe` を作り、フォルダごと artifact `Tsute-windows` にする。画面は exe に埋め込まれ、データ・資格情報・
+  レジストリ（通知用 AUMID・自動起動）はアプリが初回起動時・設定変更時に自分で作るため、インストーラーでしかできない作業がない。
+  - VC++ ランタイムは静的リンク（tauri-build の既定）。CI で `dumpbin /dependents` を見て、vcruntime・msvcp・
+    WebView2Loader の DLL に依存していないことを確かめる（依存していたら失敗させる）。
+  - 前提: WebView2 ランタイム（Windows 11・更新済みの Windows 10 には標準で入っている）。インストーラーがないので自動導入はされない。
+  - スタート メニューのショートカットは作られない（必要ならユーザーが作る）。
+  - 自動起動は exe のパスを登録するので、フォルダを移動したら設定でオンにし直す（移動前のパスは `not_registered` と表示）。
+  - アンインストール = フォルダを削除。ただしフォルダ外に残るもの: `%LOCALAPPDATA%\dev.tsute.desktop`（設定・履歴）、
+    資格情報マネージャーの `dev.tsute.desktop|…`、HKCU の `Software\Classes\AppUserModelId\dev.tsute.desktop` と
+    Run の `Tsute`（設定でオフにすれば消える）。登録解除（設定の「登録を解除」）を先にすると Endpoint 鍵も消える。
+- アイコンは `icons/icon.ico`（`icon.png` から生成。exe のリソースに埋め込まれる）。
 - **コード署名なし**（SmartScreen の警告が出る）。配布するなら署名証明書が必要（新たな契約になるのでユーザー判断）。
 
 ## 未解決・次の作業
