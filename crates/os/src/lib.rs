@@ -5,10 +5,18 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+// macOS ではテストからだけ使う（変換ロジックを Windows 以外でも検証するため）
+#[cfg(any(windows, test))]
+#[cfg_attr(not(windows), allow(dead_code))]
+mod dib;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::*;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::*;
 
 /// Send Clipboard 押下時に読み取った内容の候補。1 回のコピーが複数表現を持つことがあるため複数返す（ADR-0003）。
 #[derive(Debug, Clone, Serialize)]
@@ -65,9 +73,62 @@ pub fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
     Some((w, h))
 }
 
-#[cfg(not(target_os = "macos"))]
+/// 拡張子から判定するファイルの種類（Windows には UTType に当たる仕組みがないため、Clipboard の分類に使う）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaKind {
+    Image,
+    Video,
+}
+
+/// 動画・画像の拡張子と MIME。表にない拡張子は通常のファイルとして扱う（安全側: Files の確認画面になるだけ）
+pub fn media_type_for_path(p: &std::path::Path) -> Option<(MediaKind, &'static str)> {
+    let ext = p.extension()?.to_str()?.to_ascii_lowercase();
+    let t = match ext.as_str() {
+        "mp4" => (MediaKind::Video, "video/mp4"),
+        "m4v" => (MediaKind::Video, "video/x-m4v"),
+        "mov" => (MediaKind::Video, "video/quicktime"),
+        "avi" => (MediaKind::Video, "video/x-msvideo"),
+        "wmv" => (MediaKind::Video, "video/x-ms-wmv"),
+        "mkv" => (MediaKind::Video, "video/x-matroska"),
+        "webm" => (MediaKind::Video, "video/webm"),
+        "mpg" | "mpeg" => (MediaKind::Video, "video/mpeg"),
+        "3gp" => (MediaKind::Video, "video/3gpp"),
+        "png" => (MediaKind::Image, "image/png"),
+        "jpg" | "jpeg" => (MediaKind::Image, "image/jpeg"),
+        "gif" => (MediaKind::Image, "image/gif"),
+        "bmp" => (MediaKind::Image, "image/bmp"),
+        "webp" => (MediaKind::Image, "image/webp"),
+        "heic" => (MediaKind::Image, "image/heic"),
+        "heif" => (MediaKind::Image, "image/heif"),
+        "tif" | "tiff" => (MediaKind::Image, "image/tiff"),
+        _ => return None,
+    };
+    Some(t)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn media_type_by_extension_is_case_insensitive() {
+        use std::path::Path;
+        assert_eq!(
+            media_type_for_path(Path::new(r"C:\v\Clip.MP4")),
+            Some((MediaKind::Video, "video/mp4"))
+        );
+        assert_eq!(
+            media_type_for_path(Path::new("a.jpeg")),
+            Some((MediaKind::Image, "image/jpeg"))
+        );
+        assert_eq!(media_type_for_path(Path::new("notes.txt")), None);
+        assert_eq!(media_type_for_path(Path::new("noext")), None);
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 mod unsupported {
-    //! Phase 2 で Windows 実装を追加するまでのビルド用スタブ
+    //! macOS / Windows 以外（対象外の OS）でワークスペースをビルドするためのスタブ
     use super::*;
     pub fn read_clipboard(_tmp: &std::path::Path) -> Result<ClipSnapshot, String> {
         Err("clipboard not supported on this OS yet".into())
@@ -82,5 +143,5 @@ mod unsupported {
         Err("unsupported".into())
     }
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 pub use unsupported::*;
