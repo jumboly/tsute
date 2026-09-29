@@ -41,7 +41,9 @@ Namespace を紐付け、一覧・転送・一斉通知を同じ Namespace 内�
 - デプロイ後の確認: `admin.sh test list` で既存 4 Endpoint（Mac ×2, iPhone ×2）が `default`。Namespace なしの
   issue-key はスクリプト・Lambda の両方で拒否。クラウド Web E2E（`e2e` Namespace に登録）Chromium 13/13、
   WebKit は 1 回目 `offline_recovery` のみ失敗（#4 と同じ散発）→ 再実行 2 回とも 13/13。終了後に E2E の Endpoint は失効済み。
-- 未確認: 既存の Mac / iPhone の実機での送受信（ユーザー操作）、クラウドのデスクトップ E2E（実 Clipboard を上書きするため未実行）。
+- クラウドのデスクトップ E2E（`e2e` Namespace）: 1 回目は Video（file URL）のプレビュー待ちでタイムアウト（#5 の再発）、
+  再実行で 14/14。一覧には E2E の Endpoint だけが表示され、既存の Endpoint は見えない（Namespace の分離をクラウドで確認）。
+- 未確認: 既存の Mac / iPhone の実機での送受信（ユーザー操作）。
 - CI からの Backend デプロイを復旧（#3 クローズ, PR #17）: bootstrap の信頼条件を immutable subject 形式に更新し、
   GitHub Environment `test` に設定値を登録（`AWS_REGION` のみ Variables、ほかは Secrets。ADR-0010）。
   Deploy backend 成功（run 36577497594）、ログに独自ドメイン・アカウント ID が出ないことを確認。
