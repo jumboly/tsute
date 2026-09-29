@@ -24,7 +24,9 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* 画面をウィンドウの高さに収め、はみ出す部分（履歴など）だけをスクロールさせる */
 body {
+  display: flex; flex-direction: column; overflow: hidden;
   font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--fg);
@@ -43,7 +45,20 @@ body {
 .icon-btn { background: none; border: none; font-size: 17px; cursor: pointer; color: var(--fg); }
 .banner { padding: 6px 14px; font-size: 12px; }
 .banner.warn { background: var(--warn-bg); }
-.view { padding: 14px; }
+.view { padding: 12px 14px; flex: 1; min-height: 0; overflow-y: auto; }
+.view[hidden] { display: none; }
+/* ID セレクタは .view[hidden] より強いので、表示中だけ flex にする（常に flex だと他の画面の下に残る） */
+#view-main:not([hidden]) { display: flex; flex-direction: column; overflow: hidden; }
+#view-main > * { flex-shrink: 0; }
+#view-main .history { flex: 1 1 auto; flex-shrink: 1; min-height: 0; overflow-y: auto; margin: 0 -14px -12px; padding: 0 14px 12px; }
+.section-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%; margin: 12px 0 6px; padding: 2px 0;
+  background: none; border: none; border-radius: 0; color: var(--muted); font-size: 13px; font-weight: 600; text-align: left;
+}
+.section-toggle .chevron { display: inline-block; width: 1em; transition: transform .15s; }
+.section-toggle[aria-expanded="false"] .chevron { transform: rotate(-90deg); }
+.section-toggle:focus:not(:focus-visible) { outline: none; }
+.section-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 h2 { font-size: 16px; margin: 0 0 10px; }
 h3 { font-size: 13px; margin: 18px 0 6px; color: var(--muted); font-weight: 600; }
 label { display: block; margin: 10px 0; color: var(--muted); font-size: 12px; }
@@ -60,7 +75,7 @@ button {
 button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 button.danger { color: var(--danger); }
 button.small { padding: 3px 9px; font-size: 12px; }
-button.big { width: 100%; padding: 12px; font-size: 14px; }
+button.big { width: 100%; padding: 9px; font-size: 14px; }
 button:disabled { opacity: .5; cursor: default; }
 .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; align-items: center; }
 label .row { margin-top: 4px; }
@@ -68,9 +83,9 @@ label .row input { margin-top: 0; }
 .muted { color: var(--muted); }
 .error { color: var(--danger); min-height: 1em; -webkit-user-select: text; user-select: text; }
 .mono { font-family: ui-monospace, Menlo, monospace; font-size: 11px; word-break: break-all; -webkit-user-select: text; user-select: text; }
-.actions { margin: 12px 0; }
+.actions { margin: 10px 0; }
 .dropzone {
-  border: 2px dashed var(--line); border-radius: 12px; padding: 26px 10px; text-align: center; color: var(--fg);
+  border: 2px dashed var(--line); border-radius: 12px; padding: 14px 10px; text-align: center; color: var(--fg);
   transition: background .15s, border-color .15s;
 }
 .dropzone.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -98,6 +113,11 @@ progress { width: 100%; height: 6px; margin-top: 4px; }
 .files .path { grid-column: 1 / -1; }
 .files.rejected li { color: var(--danger); }
 .to { margin-top: 12px; }
+.send-bar {
+  position: sticky; top: -12px; z-index: 1; display: flex; align-items: center; gap: 8px;
+  margin: -4px -14px 10px; padding: 8px 14px; background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.send-bar .to { margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast {
   position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg);
   padding: 7px 14px; border-radius: 8px; font-size: 12px; z-index: 10; max-width: 90%;

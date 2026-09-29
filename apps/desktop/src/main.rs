@@ -41,6 +41,9 @@ fn default_app_dir() -> PathBuf {
         .join("dev.tsute.desktop")
 }
 
+/// ウィンドウの最小サイズ（論理ピクセル）。履歴を折りたたんでいる間は高さだけこれより低くする
+pub const WINDOW_MIN_SIZE: (f64, f64) = (360.0, 420.0);
+
 pub fn show_window(app: &AppHandle, view: Option<&str>) {
     // ウィンドウを開いた = 受信を確認したとみなし、メニューバーの印を消す
     let had_unread = {
@@ -74,8 +77,8 @@ pub fn show_window(app: &AppHandle, view: Option<&str>) {
     };
     match WebviewWindowBuilder::new(app, "main", WebviewUrl::App(url.into()))
         .title(title)
-        .inner_size(440.0, 680.0)
-        .min_inner_size(380.0, 480.0)
+        .inner_size(400.0, 580.0)
+        .min_inner_size(WINDOW_MIN_SIZE.0, WINDOW_MIN_SIZE.1)
         .build()
     {
         Ok(w) => {
@@ -323,6 +326,7 @@ fn main() {
             commands::save_as,
             commands::cancel_transfer,
             commands::set_login_item,
+            commands::set_window_height,
             commands::rename_endpoint,
             commands::choose_download_dir,
             commands::forget_enrollment,

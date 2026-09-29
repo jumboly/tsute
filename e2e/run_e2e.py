@@ -278,6 +278,9 @@ def run_all(args, server, work, apps):
         assert A.view() == "main"
         A.click("send-clipboard")
         A.wait(lambda: A.view() == "clip", "preview shown")
+        # 表示されている画面は確認画面だけ（CSS の詳細度でメイン画面が下に残ったことがある）
+        shown = A.js("return [...document.querySelectorAll('.view')].filter(v => getComputedStyle(v).display !== 'none').map(v => v.id)")
+        assert shown == ["view-clip"], f"only the preview should be visible, got {shown}"
         assert A.text("clip-text") == msg, "preview must show exact clipboard text"
         # プレビュー表示だけでは送信されない
         time.sleep(1.5)
