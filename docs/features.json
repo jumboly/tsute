@@ -456,7 +456,7 @@
       "area": "backend",
       "title": "Namespace による Endpoint の分離（認可境界）— issue #15, ADR-0017",
       "status": "in_progress",
-      "notes": "2026-09-29 実装。server-core の namespace_rules 6 件（境界を外すと失敗することも確認）、旧 DynamoDB 項目の読み込み 2 件、既存の結合テスト・ローカル Web E2E 26/26 が通過。未確認: test 環境へのデプロイ後の admin.sh と既存 Endpoint（default）の動作、クラウド E2E"
+      "notes": "2026-09-29 実装・test 環境にデプロイ。server-core の namespace_rules 6 件（境界を外すと失敗することも確認）、旧 DynamoDB 項目の読み込み 2 件、既存テスト・ローカル Web E2E 26/26。デプロイ後: 既存 Endpoint が default、Namespace なしの issue-key を拒否、クラウド Web E2E（e2e Namespace）通過（WebKit は #4 の散発 1 回後に再実行で通過）。未確認: 既存の実機での送受信、クラウドのデスクトップ E2E"
     }
   ]
 }

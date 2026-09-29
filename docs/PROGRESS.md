@@ -35,14 +35,16 @@ Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 
     履歴の折りたたみ（折りたたみ中はウィンドウの高さを中身に合わせて固定、新着件数を表示、通知から開くと広げる）、
     送信確認画面の送信先とボタンを上部に固定（内容が長くても見切れない）。
 
-**Namespace による Endpoint の分離（#15, ADR-0017）実装（2026-09-29, PR）。** Enrollment Key に Namespace を紐付け、
-一覧・転送・一斉通知を同じ Namespace 内に限定（Backend で強制）。既存の Endpoint は `default` とみなし移行不要。
-`scripts/admin.sh <env> issue-key <namespace>`（Namespace 必須）。main へのマージで test 環境へ自動デプロイされる。
-未確認: デプロイ後の admin.sh・既存 Endpoint の動作、クラウド E2E（`e2e` Namespace に登録するよう変更済み）。
-- マージ時の Deploy backend は失敗（前回の main push でも同じ）: GitHub Environment `test` に設定値が無く、
-  bootstrap の信頼条件も旧 subject 形式（`repo:jumboly/tsute`）のままだった（#3）。2026-09-29 に設定値を登録
-  （`AWS_REGION` のみ Variables、ほかは Secrets。ADR-0010）。信頼条件を immutable 形式にする bootstrap の
-  チェンジセットは作成済みで、適用はユーザー（IAM 変更のため）。
+**Namespace による Endpoint の分離（#15, ADR-0017）実装・test 環境にデプロイ済み（2026-09-29, PR #16）。** Enrollment Key に
+Namespace を紐付け、一覧・転送・一斉通知を同じ Namespace 内に限定（Backend で強制）。既存の Endpoint は `default` とみなし移行不要。
+`scripts/admin.sh <env> issue-key <namespace>`（Namespace 必須）。
+- デプロイ後の確認: `admin.sh test list` で既存 4 Endpoint（Mac ×2, iPhone ×2）が `default`。Namespace なしの
+  issue-key はスクリプト・Lambda の両方で拒否。クラウド Web E2E（`e2e` Namespace に登録）Chromium 13/13、
+  WebKit は 1 回目 `offline_recovery` のみ失敗（#4 と同じ散発）→ 再実行 2 回とも 13/13。終了後に E2E の Endpoint は失効済み。
+- 未確認: 既存の Mac / iPhone の実機での送受信（ユーザー操作）、クラウドのデスクトップ E2E（実 Clipboard を上書きするため未実行）。
+- CI からの Backend デプロイを復旧（#3 クローズ, PR #17）: bootstrap の信頼条件を immutable subject 形式に更新し、
+  GitHub Environment `test` に設定値を登録（`AWS_REGION` のみ Variables、ほかは Secrets。ADR-0010）。
+  Deploy backend 成功（run 36577497594）、ログに独自ドメイン・アカウント ID が出ないことを確認。
 
 GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）と fork の https://github.com/mianst9524/tsute。
 
@@ -76,7 +78,7 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
   iOS はホーム画面の Web アプリと Safari で保存領域が別で、PWA 側で再登録が必要（仕様。TESTING.md に記載）。
 - 確認待ち: #11 新着表示と送信先の初期値、#10 Windows 版、#12 Mac の手動確認、#14 Android / Firefox（保留）
 - 不具合: #4 WebKit の web-e2e が不安定、#5 クラウド E2E の動画プレビュー待ちタイムアウト、#6 受信の received が中断される
-- 機能・作業: #9 Windows 版の未実装項目、#8 配布用の署名、#7 フォルダの Drop、#13 chunk size / 並列数のベンチ、#3 OIDC subject の確認
+- 機能・作業: #9 Windows 版の未実装項目、#8 配布用の署名、#7 フォルダの Drop、#13 chunk size / 並列数のベンチ
 - Phase 1 完了報告
 
 ## .app 統合チェック結果（2026-09-27, e2e/out/app-checks.json）
