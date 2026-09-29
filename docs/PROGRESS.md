@@ -60,27 +60,15 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 
 ## 次にやること
 
-0. **実機確認済み（2026-09-27, iPhone のホーム画面 PWA）**: 登録、PWA / iPhone の再起動後も同じ Endpoint、音声入力 → Send → Mac で受信、Mac → PWA の Text 受信、
-   画像の双方向、PWA を完全に閉じた状態での Web Push 通知、機内モード解除後の回収。
-   **保留**: Android（Share Target 等）は端末が無いため保留（ユーザー判断）。Firefox は未確認。
-   気づいた点: (a) PWA の受信カードに気づきにくい (b) Mac の送信先の初期値が一覧の先頭（旧テスト Endpoint）で誤送信しかけた
-   (c) iOS はホーム画面の Web アプリと Safari で保存領域が別で、PWA 側で再登録が必要（仕様。TESTING.md に記載）
-1. **[実装済み・実機確認待ち]** 実機確認で見つかった 2 点を改善（2026-09-27）。ローカル・test 環境の E2E で確認済み。
-   (a) Web: 新着でトースト（「◯◯ から テキストを受信しました」/ 起動時は「未処理の受信が N 件」）、受信欄へスクロール
-   （入力中は動かさない）、未処理カードを「新着」として強調、表題とホーム画面アイコンに未処理件数（Badging API。
-   Push 受信時は件数不明のため印だけ）
-   (b) Mac: 最後に送信した相手を profile.json（last_receiver）に保存し、起動直後の送信先の初期値にする
-2. **Phase 2（Windows）の実機確認**（ユーザー）: CI の artifact `Tsute-windows` のフォルダを任意の場所にコピーして `tsute.exe` を起動し、
-   登録 → Clipboard（Text / 画像 / Explorer でコピーしたファイル）送受信 → 「Clipboard にコピー」で他アプリへ貼り付け →
-   Explorer からの D&D → 通知の表示とクリック → 「Windows の起動時に開始」→ 再起動後にウィンドウなしで常駐、を確認。
-   未実装: 同じプロファイルの再起動で既存ウィンドウを開く経路、動画のメタデータ・サムネイル、Windows 用 E2E ドライバ、コード署名。
-3. chunk size / 並列数の実回線ベンチ
-4. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
-   メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
-5. GitHub リポジトリは作成済み（2026-09-28）。
-   `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` を確認し、immutable subject が有効なら
-   bootstrap の `GitHubAppRepo` を `owner@ownerId/repo@repoId` 形式で更新する（ADR-0010。Blog ロールで実際に踏んだ）
-6. Phase 1 完了報告
+課題は GitHub issue で管理する（2026-09-29 に移行。`gh issue list`）。ここには現在地の要約だけを書く。
+
+- 実機確認済み（2026-09-27, iPhone のホーム画面 PWA）: 登録、PWA / iPhone の再起動後も同じ Endpoint、音声入力 → Send → Mac で受信、
+  Mac → PWA の Text 受信、画像の双方向、PWA を完全に閉じた状態での Web Push 通知、機内モード解除後の回収。
+  iOS はホーム画面の Web アプリと Safari で保存領域が別で、PWA 側で再登録が必要（仕様。TESTING.md に記載）。
+- 確認待ち: #11 新着表示と送信先の初期値、#10 Windows 版、#12 Mac の手動確認、#14 Android / Firefox（保留）
+- 不具合: #4 WebKit の web-e2e が不安定、#5 クラウド E2E の動画プレビュー待ちタイムアウト、#6 受信の received が中断される
+- 機能・作業: #9 Windows 版の未実装項目、#8 配布用の署名、#7 フォルダの Drop、#13 chunk size / 並列数のベンチ、#3 OIDC subject の確認
+- Phase 1 完了報告
 
 ## .app 統合チェック結果（2026-09-27, e2e/out/app-checks.json）
 
@@ -91,36 +79,26 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 
 ## 既知の問題 / 注意
 
-- CI の `web-e2e` が WebKit だけ不安定（Chromium は安定）。失敗するステップは毎回違い、再実行で成功する。
-  原因は未調査。Web / サーバーのコードを変更していない PR でも起きる。
-  - `no_console_errors`: 中断された fetch（`/api/endpoints`, `/api/transfers`）が「access control checks」の
-    コンソールエラーとして記録される。2026-09-29 の PR #2 を含めて 2 回起きた。
-  - `offline_recovery`: オフラインから復帰したあと `#view-main` が表示されず、「この Browser では使えません
-    （Ed25519 非対応）」の画面になる。Ed25519 の対応判定が復帰時に誤判定している疑い。2026-09-29 に PR #1 で 1 回起きた。
-  - 対処: 失敗したジョブだけ再実行して成功を確認してからマージする。ゲートとして信頼できないので、調べるときは
-    WebKit で該当ステップを繰り返し実行して再現させる。
+- CI の `web-e2e` が WebKit だけ不安定。失敗したジョブを再実行して成功を確認してからマージする → #4
 - CI の Rust は stable 追従（2026-09-29 時点 1.98.1）。手元が古いと新しい clippy lint を見逃すので `rustup update stable` しておく。
 
 - Web: Playwright の WebKit ビルドでは `pushManager.getSubscription()` がページごと固まる。通知許可が無いときは
   pushManager に触れない実装にして回避（許可が無ければ有効な購読は存在しないため、実 Safari でも妥当）。
-- Web: 受信は Copy / 保存 / 共有 / 閉じる で received になる。操作直後にページを閉じると POST が中断され、
-  次回また表示されることがある（安全側）。
+- Web: 受信操作の直後にページを閉じると received の POST が中断され、次回また表示されることがある（安全側）→ #6
 - Web: 画像の Clipboard 書き込みに対応しない Browser では「保存」「共有…」を使う。
 - 既存の Mac の .app（旧ビルド）は accepts を知らないため、Web 宛に動画・ファイルを選ぶと送信時にサーバーが
   422 で拒否する（確認画面での理由表示は再ビルド後）。
 
-- 独自ドメイン設定直後のクラウド E2E で「Video（file URL）のプレビュー待ちタイムアウト」が 2 回続いた。
-  サーバー通信を伴わない手順で、E2E 修正後の 2 回は再現しなかった。原因は未特定（実行中の Clipboard 操作との
-  干渉を疑う）。再発したら `--keep` でログを残して調べる。
+- クラウド E2E で動画のプレビュー待ちがタイムアウトすることがある → #5
 - 登録済みの Mac の Endpoint は旧 `*.cloudfront.net` の URL のままでも動く。独自ドメインへの切り替えは任意。
 
 - AWS CLI のセッション期限切れ（`aws login` が必要）。
 - Accessibility 権限がないため System Events による UI 自動操作は不可 → アプリ内オートメーション（ADR-0013）。
-  OS からの実ドラッグ、メニューバークリック、通知クリック、実ログインは手動確認項目。
-- Xcode 本体は未インストール（CLT のみ）。.app は ad-hoc 署名。配布には Developer ID 署名と公証が必要。
+  OS からの実ドラッグ、メニューバークリック、通知クリック、実ログインは手動確認項目 → #12
+- Xcode 本体は未インストール（CLT のみ）。.app は ad-hoc 署名（配布用の署名 → #8）。
 - ad-hoc 署名のため、再ビルド後は既存 Keychain 項目へのアクセス時に許可ダイアログが出る（ADR-0011）。
 - テスト実行時の `sandbox_extension_consume failed` ログは file URL を扱う際の OS のメッセージで、動作には影響しない。
-- フォルダの Drop は未対応（確認画面で除外理由を表示）。
+- フォルダの Drop は未対応（確認画面で除外理由を表示）→ #7
 - macOS 27 では strip 済み proc-macro dylib を dyld が拒否するため `[profile.release.build-override] strip = false`。
 - Lambda のクロスビルドは `CARGO_TARGET_DIR=target/lambda-build`（ホストの release 成果物との衝突回避）。
 

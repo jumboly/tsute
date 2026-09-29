@@ -2,7 +2,7 @@
 
 新しいセッションは、まず以下をこの順で読むこと（現在地の復元用）。
 
-1. `docs/PROGRESS.md` — 現在の進捗・次にやること・既知の問題
+1. `docs/PROGRESS.md` — 現在の進捗・既知の問題（課題そのものは GitHub issue: `gh issue list`）
 2. `docs/features.json` — 構造化された機能チェックリスト（status を更新しながら進める）
 3. `docs/REQUIREMENTS.md` — プロダクト要件と完了条件（要約）
 4. `docs/adr/` — 重要な技術判断
