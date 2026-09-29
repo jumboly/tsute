@@ -91,8 +91,14 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 
 ## 既知の問題 / 注意
 
-- CI の `web-e2e`（WebKit）の `no_console_errors` が 1 度だけ失敗した（中断された fetch が
-  「access control checks」のコンソールエラーとして記録された）。Web / サーバーのコードは無変更で、再実行で成功。再発したら調べる。
+- CI の `web-e2e` が WebKit だけ不安定（Chromium は安定）。失敗するステップは毎回違い、再実行で成功する。
+  原因は未調査。Web / サーバーのコードを変更していない PR でも起きる。
+  - `no_console_errors`: 中断された fetch（`/api/endpoints`, `/api/transfers`）が「access control checks」の
+    コンソールエラーとして記録される。2026-09-29 の PR #2 を含めて 2 回起きた。
+  - `offline_recovery`: オフラインから復帰したあと `#view-main` が表示されず、「この Browser では使えません
+    （Ed25519 非対応）」の画面になる。Ed25519 の対応判定が復帰時に誤判定している疑い。2026-09-29 に PR #1 で 1 回起きた。
+  - 対処: 失敗したジョブだけ再実行して成功を確認してからマージする。ゲートとして信頼できないので、調べるときは
+    WebKit で該当ステップを繰り返し実行して再現させる。
 - CI の Rust は stable 追従（2026-09-29 時点 1.98.1）。手元が古いと新しい clippy lint を見逃すので `rustup update stable` しておく。
 
 - Web: Playwright の WebKit ビルドでは `pushManager.getSubscription()` がページごと固まる。通知許可が無いときは
