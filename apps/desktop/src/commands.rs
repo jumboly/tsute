@@ -496,6 +496,31 @@ pub async fn cancel_transfer(st: State<'_, AppState>, transfer_id: String) -> Cm
     st.require_client()?.cancel(&transfer_id).await.map_err(es)
 }
 
+/// 履歴を折りたたんでいる間はウィンドウの高さを中身（`height`, 論理ピクセル）に合わせて固定し、
+/// 広げたら（`fixed = false`）その高さに戻して自由に変えられるようにする。幅は今のまま
+#[tauri::command]
+pub async fn set_window_height(window: tauri::WebviewWindow, height: f64, fixed: bool) -> CmdResult<()> {
+    use tauri::LogicalSize;
+    let (min_w, min_h) = crate::WINDOW_MIN_SIZE;
+    let scale = window.scale_factor().map_err(es)?;
+    let width = window.inner_size().map_err(es)?.to_logical::<f64>(scale).width;
+    if fixed {
+        // 既定の最小の高さより低くするので、先に最小を下げてから縮める
+        window.set_min_size(Some(LogicalSize::new(min_w, height))).map_err(es)?;
+        window.set_size(LogicalSize::new(width, height)).map_err(es)?;
+        window
+            .set_max_size(Some(LogicalSize::new(f64::from(u16::MAX), height)))
+            .map_err(es)?;
+    } else {
+        window.set_max_size(None::<LogicalSize<f64>>).map_err(es)?;
+        window.set_min_size(Some(LogicalSize::new(min_w, min_h))).map_err(es)?;
+        window
+            .set_size(LogicalSize::new(width, height.max(min_h)))
+            .map_err(es)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn set_login_item(app: AppHandle, enabled: bool) -> CmdResult<String> {
     on_main(&app, move || tsute_os::set_login_item(enabled)).await??;
