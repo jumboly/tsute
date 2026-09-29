@@ -97,7 +97,7 @@ async fn endpoint(c: &C, name: &str, extra: serde_json::Value) -> (String, Strin
     let mut seed = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut seed);
     let key = SigningKey::from_bytes(&seed);
-    let (ek, _) = c.issue_enrollment_key().await.unwrap();
+    let (ek, _) = c.issue_enrollment_key("default").await.unwrap();
     let mut body = serde_json::json!({"enrollment_key": ek, "name": name, "platform": "other",
         "public_key": URL_SAFE_NO_PAD.encode(key.verifying_key().as_bytes())});
     for (k, v) in extra.as_object().cloned().unwrap_or_default() {

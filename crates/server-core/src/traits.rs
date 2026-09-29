@@ -20,6 +20,8 @@ pub struct EndpointRecord {
     pub platform: Platform,
     pub public_key: String,
     pub created_at: i64,
+    /// 所属する Namespace（通信・認可の境界）。Enrollment Key から決まり、登録後は変わらない
+    pub namespace: String,
     pub client_kind: ClientKind,
     /// None = 申告なし（Phase 1 の Native レコード）。`NATIVE_ACCEPTS` とみなし、既存データの移行を不要にする
     pub accepts: Option<Vec<TransferKind>>,
@@ -64,9 +66,14 @@ pub struct ConnectionRecord {
 }
 
 pub trait Store: Send + Sync {
-    fn put_enrollment_key(&self, key_hash: &str, expires_at: i64) -> impl Future<Output = Result<()>> + Send;
-    /// 未失効なら削除して true。同時に 2 回呼ばれても true は高々 1 回（一回限り性の保証）。
-    fn consume_enrollment_key(&self, key_hash: &str, now: i64) -> impl Future<Output = Result<bool>> + Send;
+    fn put_enrollment_key(
+        &self,
+        key_hash: &str,
+        namespace: &str,
+        expires_at: i64,
+    ) -> impl Future<Output = Result<()>> + Send;
+    /// 未失効なら削除して紐付く Namespace を返す。同時に 2 回呼ばれても Some は高々 1 回（一回限り性の保証）。
+    fn consume_enrollment_key(&self, key_hash: &str, now: i64) -> impl Future<Output = Result<Option<String>>> + Send;
 
     fn put_endpoint(&self, ep: &EndpointRecord) -> impl Future<Output = Result<()>> + Send;
     fn get_endpoint(&self, id: &str) -> impl Future<Output = Result<Option<EndpointRecord>>> + Send;

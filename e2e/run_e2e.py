@@ -131,14 +131,16 @@ class Cloud:
         self.env = env
         out = json.loads((ROOT / f"infra/.build/{env}.json").read_text())
         self.base_url = out["app_base_url"]
+        # テスト用の Endpoint を普段使いの Endpoint と別の Namespace に入れ、送信先一覧に混ざらないようにする
+        self.namespace = os.environ.get("TSUTE_E2E_NAMESPACE", "e2e")
 
     def issue_key(self):
-        r = subprocess.run([str(ROOT / "scripts/admin.sh"), self.env, "issue-key"], capture_output=True, text=True, check=True)
+        r = subprocess.run([str(ROOT / "scripts/admin.sh"), self.env, "issue-key", self.namespace], capture_output=True, text=True, check=True)
         return json.loads(r.stdout)["enrollment_key"]
 
     def stop(self):
         # テストで登録した Endpoint を失効させ、クラウドに残さない
-        r = subprocess.run([str(ROOT / "scripts/admin.sh"), self.env, "list"], capture_output=True, text=True)
+        r = subprocess.run([str(ROOT / "scripts/admin.sh"), self.env, "list", self.namespace], capture_output=True, text=True)
         try:
             eps = json.loads(r.stdout)["endpoints"]
         except (ValueError, KeyError):

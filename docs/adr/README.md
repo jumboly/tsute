@@ -18,3 +18,4 @@
 | [0014](0014-unread-tray-badge.md) | 受信の知らせ方: メニューバーアイコンの未確認印（OS 通知の代替） | Accepted |
 | [0015](0015-web-pwa-client.md) | Web / PWA Client のアーキテクチャと Capability Model | Accepted |
 | [0016](0016-windows-desktop.md) | Windows デスクトップ統合（Clipboard・通知・自動起動・資格情報・トレイ） | Accepted（実機未確認） |
+| [0017](0017-namespace.md) | Namespace による Endpoint の分離（認可境界） | Accepted |
