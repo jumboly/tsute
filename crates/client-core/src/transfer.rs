@@ -162,6 +162,31 @@ fn sha256_b64(data: &[u8]) -> String {
     STANDARD.encode(Sha256::digest(data))
 }
 
+/// 受信途中のファイル名。macOS では先頭のドットで Finder から隠す。Windows ではドットで隠れず
+/// 不自然な名前になるだけなので、ブラウザの `*.crdownload` と同じく元の名前の後ろに付ける（ADR-0016）
+fn part_name(name: &str, short: &str) -> String {
+    if cfg!(windows) {
+        format!("{name}.{short}.tsute-part")
+    } else {
+        format!(".{name}.{short}.tsute-part")
+    }
+}
+
+/// 受信したファイルに「インターネットから来た」印（Mark of the Web, ZoneId=3）を付ける。
+/// ブラウザのダウンロードと同じく、開くときに SmartScreen / 保護ビューが働く。
+/// 送信元の URL 等は書かない（ADR-0016）。失敗しても受信は妨げない
+#[cfg(windows)]
+fn mark_of_the_web(path: &Path) {
+    let mut ads = path.as_os_str().to_owned();
+    ads.push(":Zone.Identifier");
+    if let Err(e) = std::fs::write(&ads, "[ZoneTransfer]\r\nZoneId=3\r\n") {
+        tracing::warn!(error = %e, "failed to add Zone.Identifier");
+    }
+}
+
+#[cfg(not(windows))]
+fn mark_of_the_web(_path: &Path) {}
+
 /// 既存ファイルを上書きしないよう "name (1).ext" 形式で空き名を探す
 pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
     let p = dir.join(name);
@@ -824,7 +849,7 @@ impl Client {
         let short = &t.transfer_id[t.transfer_id.len().saturating_sub(8)..];
         for f in &t.files {
             let final_path = unique_path(&dir, &f.name);
-            let part = dir.join(format!(".{}.{short}.tsute-part", f.name));
+            let part = dir.join(part_name(&f.name, short));
             let file = std::fs::OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -951,6 +976,7 @@ impl Client {
                     final_path.clone()
                 };
                 std::fs::rename(&part, &dest)?;
+                mark_of_the_web(&dest);
                 if dest != *final_path {
                     db.set_file(&id, f.index, &dest, None, None)?;
                 }

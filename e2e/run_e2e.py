@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""同一 Mac 上の 2 Endpoint による E2E（Phase 1 完了条件の自動検証）。
+"""同一 PC（Mac / Windows）上の 2 Endpoint による E2E（Phase 1 完了条件の自動検証。Windows は ADR-0016）。
 
 使い方:
   python3 e2e/run_e2e.py --target local                 # ローカル開発サーバーを起動して実行
   python3 e2e/run_e2e.py --target cloud --env test      # デプロイ済み AWS 環境（infra/.build/test.json）で実行
 オプション:
-  --binary PATH   アプリ実行ファイル（既定: target/debug/tsute。.app 内の Contents/MacOS/tsute も可）
+  --binary PATH   アプリ実行ファイル（既定: target/debug/tsute（Windows は tsute.exe）。.app 内の Contents/MacOS/tsute も可）
   --big-mb N      再開テストに使うファイルサイズ（既定 64MB）
 
 注意:
 - 実際の OS Clipboard を使う。実行前のテキストを退避し、終了時に復元する。
 - 資格情報はテスト用の --insecure-file-credentials（Keychain ダイアログで無人実行が止まるのを避けるため。ADR-0011）。
+- Windows では Clipboard を Win32 API で直接操作する（e2e/winclip.py）。Pasteboard に動画データを直接載せる手順は macOS 専用のため省く。
 - OS のドラッグ操作そのものは自動化できないため、Drop イベント以降（確認画面 → 送信）を UI 上で実行する（ADR-0013）。
 """
 import argparse
@@ -31,6 +32,10 @@ from driver import App  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 FIX = ROOT / "fixtures"
 results = []
+WIN = os.name == "nt"
+EXE = ".exe" if WIN else ""
+if WIN:
+    import winclip  # noqa: E402
 
 
 def step(name):
@@ -50,6 +55,27 @@ def step(name):
     return deco
 
 
+def make_pdf(path, lines):
+    """中身も PDF として正しいファイルを作る（拡張子と中身が食い違う乱数ファイルは暗号化された文書と区別できず、
+    実際の使い方とも違うため）。1 ページにテキストを lines 行描く"""
+    text = "".join(f"BT /F1 8 Tf 20 {800 - (i % 90) * 9} Td (tsute e2e line {i}) Tj ET\n" for i in range(lines)).encode()
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            b"<< /Length %d >>\nstream\n" % len(text) + text + b"endstream",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for i, o in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % i + o + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    out += b"".join(b"%010d 00000 n \n" % off for off in offsets)
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
+    path.write_bytes(bytes(out))
+
+
 def sha(p):
     h = hashlib.sha256()
     with open(p, "rb") as f:
@@ -59,10 +85,16 @@ def sha(p):
 
 
 def pbcopy(text):
-    subprocess.run(["pbcopy"], input=text.encode(), check=True)
+    if WIN:
+        winclip.set_text(text)
+    else:
+        subprocess.run(["pbcopy"], input=text.encode(), check=True)
 
 
 def pbpaste():
+    if WIN:
+        # アプリは LF を CRLF にして載せる（ADR-0003）。比較は LF で行う
+        return winclip.get_text().replace("\r\n", "\n")
     return subprocess.run(["pbpaste"], capture_output=True, check=True).stdout.decode()
 
 
@@ -73,7 +105,7 @@ def osascript(s):
 class Local:
     def __init__(self, work):
         self.dir = work / "server"
-        bin_ = ROOT / "target/debug/tsute-devserver"
+        bin_ = ROOT / f"target/debug/tsute-devserver{EXE}"
         subprocess.run(["cargo", "build", "-q", "-p", "tsute-server-local"], cwd=ROOT, check=True)
         self.proc = subprocess.Popen([str(bin_), "--bind", "127.0.0.1:0", "--data-dir", str(self.dir), "--blob-delay-ms", "1500"],
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -141,7 +173,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", choices=["local", "cloud"], default="local")
     ap.add_argument("--env", default="test")
-    ap.add_argument("--binary", default=str(ROOT / "target/debug/tsute"))
+    ap.add_argument("--binary", default=str(ROOT / f"target/debug/tsute{EXE}"))
     ap.add_argument("--big-mb", type=int, default=64)
     ap.add_argument("--keep", action="store_true", help="作業ディレクトリを残す")
     args = ap.parse_args()
@@ -158,7 +190,8 @@ def main():
         for a in apps.values():
             a.quit()
         server.stop()
-        pbcopy(saved_clip)
+        if saved_clip:
+            pbcopy(saved_clip)
         out = ROOT / "e2e/out"
         out.mkdir(exist_ok=True)
         report = {"target": args.target, "base_url": server.base_url, "binary": args.binary,
@@ -274,7 +307,10 @@ def run_all(args, server, work, apps):
 
     @step("Clipboard Image (PNG): preview with dimensions → receive → apply as image")
     def image():
-        osascript(f'set the clipboard to (read (POSIX file "{FIX}/image-64x48.png") as «class PNGf»)')
+        if WIN:
+            winclip.set_png(FIX / "image-64x48.png")
+        else:
+            osascript(f'set the clipboard to (read (POSIX file "{FIX}/image-64x48.png") as «class PNGf»)')
         A.click("send-clipboard")
         A.wait(lambda: A.view() == "clip", "preview")
         meta = A.text("clip-meta")
@@ -283,22 +319,33 @@ def run_all(args, server, work, apps):
         tid = recv("clipboard_image")
         pbcopy("sentinel")
         item_click(B, tid, "apply")
-        B.wait(lambda: "PNGf" in osascript("clipboard info"), "PNG on clipboard")
+        if WIN:
+            B.wait(lambda: winclip.has_format("PNG"), "PNG on clipboard")
+        else:
+            B.wait(lambda: "PNGf" in osascript("clipboard info"), "PNG on clipboard")
         return meta
     image()
 
     @step("Clipboard Video (file URL, Finder-style copy): metadata → receive → apply as file URL")
     def video_url():
         mov = FIX / "video-320x240-2s.mov"
-        osascript(f'set the clipboard to (POSIX file "{mov}")')
+        if WIN:
+            # Explorer でのコピーと同じ CF_HDROP
+            winclip.set_files([mov])
+        else:
+            osascript(f'set the clipboard to (POSIX file "{mov}")')
         A.click("send-clipboard")
         A.wait(lambda: A.view() == "clip", "preview")
         meta = A.text("clip-meta")
-        assert "320 × 240" in meta and "2秒" in meta, meta
+        # Windows では動画の寸法・長さを取らない（ADR-0016）
+        assert WIN or ("320 × 240" in meta and "2秒" in meta), meta
         A.click("clip-send")
         tid = recv("clipboard_video")
         item_click(B, tid, "apply")
-        path = B.wait(lambda: osascript("POSIX path of (the clipboard as «class furl»)"), "file URL on clipboard")
+        if WIN:
+            path = B.wait(lambda: (winclip.get_files() or [None])[0], "CF_HDROP on clipboard")
+        else:
+            path = B.wait(lambda: osascript("POSIX path of (the clipboard as «class furl»)"), "file URL on clipboard")
         assert sha(path) == sha(mov), "received video differs"
         return meta
     video_url()
@@ -315,7 +362,8 @@ def run_all(args, server, work, apps):
         A.click("clip-send")
         tid = recv("clipboard_video")
         return meta
-    video_raw()
+    if not WIN:
+        video_raw()
 
     src = work / "src"
     src.mkdir(exist_ok=True)
@@ -345,7 +393,7 @@ def run_all(args, server, work, apps):
     @step("Single file drop")
     def single():
         one = src / "single.pdf"
-        one.write_bytes(os.urandom(300_000))
+        make_pdf(one, 6000)
         A.js(f"window.__tsute.handleDrop({json.dumps([str(one)])}); return 1")
         A.wait(lambda: A.view() == "files", "confirmation")
         A.click("files-send")

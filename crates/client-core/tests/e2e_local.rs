@@ -297,6 +297,14 @@ async fn single_multiple_and_large_files() {
         .filter(|e| e.file_name().to_string_lossy().ends_with(".tsute-part"))
         .collect();
     assert!(leftovers.is_empty());
+    // Windows ではブラウザのダウンロードと同じ Mark of the Web が付く
+    #[cfg(windows)]
+    {
+        let mut ads = item3.paths[0].as_os_str().to_owned();
+        ads.push(":Zone.Identifier");
+        let zone = std::fs::read_to_string(&ads).expect("Zone.Identifier");
+        assert!(zone.contains("ZoneId=3"), "{zone}");
+    }
 }
 
 /// 送信側を途中で kill → 受信側は既にアップロード済みチャンクを取得（overlap）→ 送信側再起動で再開して完了
