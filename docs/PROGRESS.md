@@ -1,6 +1,6 @@
 # 進捗
 
-最終更新: 2026-09-28
+最終更新: 2026-09-29
 
 ## 現在地
 
@@ -19,9 +19,19 @@ Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 
   （当初 NSIS インストーラ → 2026-09-29 ユーザー判断で**フォルダコピー配布**（`tsute.exe` 単体）に変更）。PR #1（ブランチ `phase2-windows`）で実行し **全ジョブ成功（2026-09-29）**:
   Windows で clippy 警告なし、client-core 結合テスト 10/10（ローカル開発サーバー相手の実転送）、
   資格情報マネージャー 1/1、実 Clipboard 4/4、DIB 変換 6/6。（この時点の artifact は NSIS, 約 5.3MB）
-- **Windows 実機での操作確認は未実施**（ここまでが今回の範囲）。
+- **2026-09-29 Windows 11 実機（社内 PC）で確認**:
+  - 手動（ユーザー操作, ローカル開発サーバー, 2 プロファイル）: Text・画像の送受信、ファイル（PDF / zip 22MB / vhdx 1GB）の
+    送受信。受信ファイルに Mark of the Web（ZoneId=3）が付くこと、part ファイルが残らないことを確認。
+  - E2E（`e2e/run_e2e.py` を Windows 対応。名前付きパイプ + `e2e/winclip.py`）: 1 回目は 12 手順中 8 手順通過
+    （登録・Key 再利用拒否・一覧・Text・大きい Text・画像・動画（CF_HDROP）・複数ファイル）。
+    9 手順目の途中で**社内のウイルス対策ソフトの挙動監視が tsute.exe を「Unauthorized file encryption」として停止**。
+    乱数を詰めた偽の `single.pdf` を `.tsute-part` から改名した時点。以後、E2E の再実行はしていない（ユーザー判断待ち）。
+  - 対策（検出の回避ではなく、普通のアプリと同じ振る舞いにそろえる）: 受信ファイルへの Mark of the Web、
+    Windows では part ファイル名の先頭のドットをやめる（ADR-0016）、E2E の PDF を中身も正しい PDF にする、
+    exe を一時フォルダではなく `%LOCALAPPDATA%\Programs\tsute\` に置く。対策後の手動確認では検出なし。
+  - 未確認: 通知の表示とクリック、自動起動、トレイ操作、Explorer からの D&D、転送途中の再開（kill → 再起動）。
 
-GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）。
+GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）と fork の https://github.com/mianst9524/tsute。
 
 **Phase W（Web / PWA）実装済み・iPhone 実機確認済み（2026-09-27）。Android は端末が無く保留。** ユーザー指示で Windows より先に着手。
 ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pwa.md`、機能一覧 features.json の `phase: "W"`。

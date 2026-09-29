@@ -45,6 +45,9 @@ CI の `windows` ジョブでは毎回実行する（ランナーは使い捨て
   インストーラーなし・フォルダコピーで使う。ADR-0016）。
 - 手元の Windows: Rust（MSVC）と Visual Studio Build Tools（C++）が必要。`cd apps/desktop && cargo tauri build --no-bundle`
   → `target/release/tsute.exe`（素の `cargo build` では画面が埋め込まれないので Tauri CLI を使う）。
+- 手元の Windows での E2E（ADR-0016）: `cargo build -p tsute-desktop` のあと `python e2e/run_e2e.py --target local`。
+  社内プロキシ環境では `NO_PROXY` に `127.0.0.1` を足す（Python の urllib は `127.0.0.0/8` のような CIDR を解釈しない）。
+  実 Clipboard を上書きする（テキストは終了時に復元）。社内 PC ではウイルス対策ソフトの挙動監視に止められたことがある。
 - macOS からのクロスビルドはできない（aws-lc-sys・SQLite が C のため Windows SDK が要る）。
   `cargo clippy -p tsute-os --target x86_64-pc-windows-msvc` だけは macOS でも通る（純 Rust のため）。
 

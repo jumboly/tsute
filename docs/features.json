@@ -386,7 +386,7 @@
       "title": "Windows Clipboard の読み取り/正規化/書き込み（CF_UNICODETEXT / PNG / CF_DIB / CF_HDROP）— ADR-0016",
       "phase": "2",
       "status": "in_progress",
-      "notes": "実装済み。DIB⇔PNG 変換の単体テスト（macOS でも実行）と実 Clipboard テスト 4/4 が CI の windows-latest で成功。Windows 実機での他アプリとの貼り付け確認は未実施。動画の解像度・長さ・サムネイルは未取得"
+      "notes": "実装済み。CI の実 Clipboard テスト 4/4 に加え、2026-09-29 Windows 11 実機で Text・画像の送受信と他アプリへの貼り付け、E2E で PNG / CF_HDROP を確認。動画の解像度・長さ・サムネイルは未取得"
     },
     {
       "id": "win-credential",
@@ -394,7 +394,7 @@
       "title": "Windows 資格情報マネージャーに Endpoint 鍵を保存（LOCAL_MACHINE persist）",
       "phase": "2",
       "status": "in_progress",
-      "notes": "実装済み。読み書き・削除のテストを CI（windows-latest）で実行。実機未確認"
+      "notes": "実装済み。CI で読み書き・削除のテスト。2026-09-29 実機で登録 → 再起動後の認証を確認（手動確認のプロファイル）"
     },
     {
       "id": "win-notify",
@@ -426,7 +426,7 @@
       "title": "オートメーション経路の名前付きパイプ化（E2E 用）",
       "phase": "2",
       "status": "in_progress",
-      "notes": "実装済み・ビルドのみ確認。Windows 用 E2E ドライバは未作成"
+      "notes": "実装済み。2026-09-29 e2e/run_e2e.py を Windows 対応（名前付きパイプ + e2e/winclip.py）。実機で 12 手順中 8 手順通過。9 手順目でウイルス対策ソフトの挙動監視に停止され、全手順は未通過"
     },
     {
       "id": "win-ci-build",
@@ -435,6 +435,14 @@
       "phase": "2",
       "status": "in_progress",
       "notes": "ci.yml windows / desktop.yml windows。PR #1 で全ジョブ成功（2026-09-29, NSIS 版）。フォルダコピー配布に変更し、dumpbin で追加 DLL 不要を CI で確認。コード署名なし"
+    },
+    {
+      "id": "win-receive-motw",
+      "area": "os",
+      "title": "Windows の受信ファイルに Mark of the Web（ZoneId=3）、part ファイル名をブラウザ風に — ADR-0016",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み。client-core 結合テストで Zone.Identifier を確認、2026-09-29 実機で PDF / zip / 1GB を受信して確認。挙動監視に対する効果は手動確認 1 回のみ"
     }
   ]
 }
