@@ -30,6 +30,10 @@ Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 
     Windows では part ファイル名の先頭のドットをやめる（ADR-0016）、E2E の PDF を中身も正しい PDF にする、
     exe を一時フォルダではなく `%LOCALAPPDATA%\Programs\tsute\` に置く。対策後の手動確認では検出なし。
   - 未確認: 通知の表示とクリック、自動起動、トレイ操作、Explorer からの D&D、転送途中の再開（kill → 再起動）。
+  - 実機確認で出た UI の指摘を反映（2026-09-29, Windows で確認済み・macOS は未確認）: Windows で「Mac」と出ていた
+    登録名の初期値と登録削除ボタンを OS に合わせる、ウィンドウを 400×580 に縮めて余白を詰める、履歴だけをスクロール、
+    履歴の折りたたみ（折りたたみ中はウィンドウの高さを中身に合わせて固定、新着件数を表示、通知から開くと広げる）、
+    送信確認画面の送信先とボタンを上部に固定（内容が長くても見切れない）。
 
 GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）と fork の https://github.com/mianst9524/tsute。
 
