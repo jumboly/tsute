@@ -39,6 +39,10 @@ Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 
 一覧・転送・一斉通知を同じ Namespace 内に限定（Backend で強制）。既存の Endpoint は `default` とみなし移行不要。
 `scripts/admin.sh <env> issue-key <namespace>`（Namespace 必須）。main へのマージで test 環境へ自動デプロイされる。
 未確認: デプロイ後の admin.sh・既存 Endpoint の動作、クラウド E2E（`e2e` Namespace に登録するよう変更済み）。
+- マージ時の Deploy backend は失敗（前回の main push でも同じ）: GitHub Environment `test` に設定値が無く、
+  bootstrap の信頼条件も旧 subject 形式（`repo:jumboly/tsute`）のままだった（#3）。2026-09-29 に設定値を登録
+  （`AWS_REGION` のみ Variables、ほかは Secrets。ADR-0010）。信頼条件を immutable 形式にする bootstrap の
+  チェンジセットは作成済みで、適用はユーザー（IAM 変更のため）。
 
 GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）と fork の https://github.com/mianst9524/tsute。
 

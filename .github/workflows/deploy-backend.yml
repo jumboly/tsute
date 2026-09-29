@@ -31,14 +31,15 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Environment ごとに Variables（AWS_REGION, AWS_DEPLOY_ROLE_ARN, TSUTE_APP_DOMAIN 等）と承認ルールを持たせる
+    # Environment ごとに設定値と承認ルールを持たせる。public リポジトリの Actions ログに独自ドメインや
+    # アカウント ID を載せないよう、AWS_REGION 以外は Secrets（ログでマスクされる）にする（ADR-0010）
     environment: ${{ inputs.environment || 'test' }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
-      TSUTE_APP_DOMAIN: ${{ vars.TSUTE_APP_DOMAIN }}
-      TSUTE_CERT_ARN: ${{ vars.TSUTE_CERT_ARN }}
-      TSUTE_GITHUB_BLOG_REPO: ${{ vars.TSUTE_GITHUB_BLOG_REPO }}
-      TSUTE_GITHUB_APP_REPO: ${{ vars.TSUTE_GITHUB_APP_REPO }}
+      TSUTE_APP_DOMAIN: ${{ secrets.TSUTE_APP_DOMAIN }}
+      TSUTE_CERT_ARN: ${{ secrets.TSUTE_CERT_ARN }}
+      TSUTE_GITHUB_BLOG_REPO: ${{ secrets.TSUTE_GITHUB_BLOG_REPO }}
+      TSUTE_GITHUB_APP_REPO: ${{ secrets.TSUTE_GITHUB_APP_REPO }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -47,7 +48,7 @@ jobs:
       - run: uv tool install cargo-lambda
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - run: infra/deploy.sh "${{ inputs.environment || 'test' }}"
       - name: Smoke test
