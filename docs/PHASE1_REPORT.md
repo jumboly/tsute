@@ -69,7 +69,7 @@ docs/adr/README.md（0001–0013）。
 
 1. `target/release/bundle/macos/Tsute.app` を開く（test 環境の URL がビルド時に埋め込み済み）。
    2 つ目は `open -n target/release/bundle/macos/Tsute.app --args --profile test-b`。
-2. 登録キーを発行: `scripts/admin.sh test issue-key`（10 分・一回限り）→ 登録画面に貼り付けて登録。
+2. 登録キーを発行: `scripts/admin.sh test issue-key default`（10 分・一回限り）→ 登録画面に貼り付けて登録。
 3. メニューバーのアイコン → 「つて を開く」。送信先を選び、他アプリでコピー → 「Clipboard を送る…」→ 確認 → 送信。
 4. もう一方で履歴の「Clipboard にコピー」→ 貼り付け確認。Finder からファイルをドロップ → 確認画面 → 送信。
 5. ウィンドウを閉じてもメニューバーに残り受信できること、メニューの「つて を終了」で終了することを確認。

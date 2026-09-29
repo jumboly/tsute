@@ -141,10 +141,16 @@ async fn handle_api(core: &AwsCore, ev: Value) -> Result<Value, Error> {
 async fn handle_admin(core: &AwsCore, ev: Value) -> Result<Value, Error> {
     match ev["op"].as_str().unwrap_or("") {
         "issue_enrollment_key" => {
-            let (key, exp) = core.issue_enrollment_key().await.map_err(|e| e.to_string())?;
-            Ok(json!({"enrollment_key": key, "expires_at": exp}))
+            // 既定値に落とさず必須にする: 指定漏れで意図しない Namespace に参加させないため
+            let ns = ev["namespace"].as_str().ok_or("namespace required")?;
+            let (key, exp) = core.issue_enrollment_key(ns).await.map_err(|e| e.to_string())?;
+            Ok(json!({"enrollment_key": key, "namespace": ns, "expires_at": exp}))
         }
-        "list_endpoints" => Ok(json!({"endpoints": core.list_endpoints_admin().await.map_err(|e| e.to_string())?})),
+        "list_endpoints" => {
+            let ns = ev["namespace"].as_str();
+            let eps = core.list_endpoints_admin(ns).await.map_err(|e| e.to_string())?;
+            Ok(json!({"endpoints": eps}))
+        }
         "revoke_endpoint" => {
             let id = ev["endpoint_id"].as_str().ok_or("endpoint_id required")?;
             core.revoke_endpoint(id).await.map_err(|e| e.to_string())?;

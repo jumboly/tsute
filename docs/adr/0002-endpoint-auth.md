@@ -5,7 +5,8 @@
 ## 決定
 
 1. **Enrollment Key 発行（管理経路）**: 管理者用 Lambda 関数（`tsute-admin`）を AWS IAM 認証で直接 Invoke する
-   （`scripts/issue-enrollment-key.sh` = `aws lambda invoke`）。API Gateway には公開しない。
+   （`scripts/admin.sh <env> issue-key <namespace>` = `aws lambda invoke`）。API Gateway には公開しない。
+   Key は Namespace に紐付き、登録した Endpoint の所属を決める（ADR-0017）。
    アプリ独自の管理者パスワードは存在しない。管理者の強さ = AWS アカウントの IAM/MFA/SSO の強さ。
 2. **Enrollment Key**: `tsute-ek-` + 160bit 乱数。サーバーは SHA-256 ハッシュのみ保存、TTL 10 分。
    登録時に条件付き削除で消費し、同時使用されても成功は 1 回だけ（一回限り）。

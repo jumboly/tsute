@@ -9,7 +9,7 @@ use crate::traits::*;
 
 #[derive(Default)]
 struct Inner {
-    ekeys: HashMap<String, i64>,
+    ekeys: HashMap<String, (String, i64)>,
     endpoints: BTreeMap<String, EndpointRecord>,
     challenges: HashMap<String, (String, i64)>,
     tokens: HashMap<String, (String, i64)>,
@@ -33,12 +33,15 @@ impl MemoryStore {
 }
 
 impl Store for MemoryStore {
-    async fn put_enrollment_key(&self, h: &str, exp: i64) -> Result<()> {
-        self.with(|i| i.ekeys.insert(h.into(), exp));
+    async fn put_enrollment_key(&self, h: &str, ns: &str, exp: i64) -> Result<()> {
+        self.with(|i| i.ekeys.insert(h.into(), (ns.into(), exp)));
         Ok(())
     }
-    async fn consume_enrollment_key(&self, h: &str, now: i64) -> Result<bool> {
-        Ok(self.with(|i| matches!(i.ekeys.remove(h), Some(exp) if exp > now)))
+    async fn consume_enrollment_key(&self, h: &str, now: i64) -> Result<Option<String>> {
+        Ok(self.with(|i| match i.ekeys.remove(h) {
+            Some((ns, exp)) if exp > now => Some(ns),
+            _ => None,
+        }))
     }
     async fn put_endpoint(&self, ep: &EndpointRecord) -> Result<()> {
         self.with(|i| i.endpoints.insert(ep.endpoint_id.clone(), ep.clone()));

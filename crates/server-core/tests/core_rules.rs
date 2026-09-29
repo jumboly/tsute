@@ -69,7 +69,7 @@ async fn req(
 /// 登録してトークンを得る
 async fn endpoint(c: &C, name: &str) -> (String, String) {
     let key = SigningKey::from_bytes(&rand_bytes());
-    let (ek, _) = c.issue_enrollment_key().await.unwrap();
+    let (ek, _) = c.issue_enrollment_key("default").await.unwrap();
     let (s, v) = req(
         c,
         "POST",

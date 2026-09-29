@@ -130,12 +130,16 @@ impl DynamoStore {
 }
 
 impl Store for DynamoStore {
-    async fn put_enrollment_key(&self, h: &str, exp: i64) -> Result<()> {
-        self.put(HashMap::from([("ttl".into(), n(exp))]), &format!("EKEY#{h}"), "-")
-            .await
+    async fn put_enrollment_key(&self, h: &str, ns: &str, exp: i64) -> Result<()> {
+        self.put(
+            HashMap::from([("namespace".into(), s(ns)), ("ttl".into(), n(exp))]),
+            &format!("EKEY#{h}"),
+            "-",
+        )
+        .await
     }
-    async fn consume_enrollment_key(&self, h: &str, now: i64) -> Result<bool> {
-        Ok(self.consume(&format!("EKEY#{h}"), now).await?.is_some())
+    async fn consume_enrollment_key(&self, h: &str, now: i64) -> Result<Option<String>> {
+        Ok(self.consume(&format!("EKEY#{h}"), now).await?.map(|i| namespace_of(&i)))
     }
     async fn put_endpoint(&self, ep: &EndpointRecord) -> Result<()> {
         let platform = serde_json::to_value(ep.platform)?
@@ -148,6 +152,7 @@ impl Store for DynamoStore {
             ("platform".into(), s(platform)),
             ("public_key".into(), s(&ep.public_key)),
             ("created_at".into(), n(ep.created_at)),
+            ("namespace".into(), s(&ep.namespace)),
             (
                 "client_kind".into(),
                 s(serde_json::to_value(ep.client_kind)?.as_str().unwrap_or("native")),
@@ -427,6 +432,15 @@ impl Store for DynamoStore {
     }
 }
 
+/// Namespace 導入前の Endpoint / Enrollment Key には属性が無い。既定の Namespace に属するとみなし、
+/// 既存データの書き換えや再 Enrollment を不要にする
+fn namespace_of(i: &Item) -> String {
+    i.get("namespace")
+        .and_then(|v| v.as_s().ok())
+        .cloned()
+        .unwrap_or_else(|| tsute_server_core::DEFAULT_NAMESPACE.to_string())
+}
+
 fn endpoint_from(i: &Item) -> Result<EndpointRecord> {
     Ok(EndpointRecord {
         endpoint_id: get_s(i, "endpoint_id")?,
@@ -435,6 +449,7 @@ fn endpoint_from(i: &Item) -> Result<EndpointRecord> {
             .unwrap_or(Platform::Other),
         public_key: get_s(i, "public_key")?,
         created_at: get_n(i, "created_at")?,
+        namespace: namespace_of(i),
         client_kind: i
             .get("client_kind")
             .and_then(|v| v.as_s().ok())
@@ -556,5 +571,35 @@ impl Notifier for ApiGwNotifier {
             Err(e) if e.as_service_error().is_some_and(|se| se.is_gone_exception()) => Ok(false),
             Err(e) => Err(e.into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn legacy_endpoint_item() -> Item {
+        HashMap::from([
+            ("endpoint_id".into(), s("ep_1")),
+            ("name".into(), s("Mac")),
+            ("platform".into(), s("macos")),
+            ("public_key".into(), s("pk")),
+            ("created_at".into(), n(1)),
+        ])
+    }
+
+    #[test]
+    fn items_without_namespace_belong_to_default() {
+        // Namespace 導入前のレコードを書き換えずに読めること（既存 Endpoint の再 Enrollment を不要にする）
+        let ep = endpoint_from(&legacy_endpoint_item()).unwrap();
+        assert_eq!(ep.namespace, tsute_server_core::DEFAULT_NAMESPACE);
+        assert_eq!(namespace_of(&HashMap::from([("ttl".into(), n(1))])), "default");
+    }
+
+    #[test]
+    fn namespace_attribute_is_read() {
+        let mut i = legacy_endpoint_item();
+        i.insert("namespace".into(), s("team-a"));
+        assert_eq!(endpoint_from(&i).unwrap().namespace, "team-a");
     }
 }

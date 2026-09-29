@@ -35,6 +35,11 @@ Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 
     履歴の折りたたみ（折りたたみ中はウィンドウの高さを中身に合わせて固定、新着件数を表示、通知から開くと広げる）、
     送信確認画面の送信先とボタンを上部に固定（内容が長くても見切れない）。
 
+**Namespace による Endpoint の分離（#15, ADR-0017）実装（2026-09-29, PR）。** Enrollment Key に Namespace を紐付け、
+一覧・転送・一斉通知を同じ Namespace 内に限定（Backend で強制）。既存の Endpoint は `default` とみなし移行不要。
+`scripts/admin.sh <env> issue-key <namespace>`（Namespace 必須）。main へのマージで test 環境へ自動デプロイされる。
+未確認: デプロイ後の admin.sh・既存 Endpoint の動作、クラウド E2E（`e2e` Namespace に登録するよう変更済み）。
+
 GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）と fork の https://github.com/mianst9524/tsute。
 
 **Phase W（Web / PWA）実装済み・iPhone 実機確認済み（2026-09-27）。Android は端末が無く保留。** ユーザー指示で Windows より先に着手。

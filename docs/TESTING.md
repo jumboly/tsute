@@ -17,6 +17,9 @@ cargo test --workspace
   presigned URL / ファイル I/O で 2 Endpoint 間を検証。送信側・受信側の kill→再起動、改ざん検出、
   Object Storage 一時障害、WebSocket 強制切断→再接続、既定 8MiB チャンク。
 - `crates/os/tests/media_macos.rs`: 動画メタデータ・サムネイル（AVFoundation）。
+- `crates/server-core/tests/namespace_rules.rs`: Namespace 境界（ADR-0017）。Key による所属の決定と申告の無視、
+  一覧・me の絞り込み、別 Namespace 宛の転送拒否（未登録と同じ応答）、別 Namespace からの Transfer 操作拒否、
+  presence / endpoints_changed / transfer_created が別 Namespace に届かないこと。
 
 ## 2. 実 OS Clipboard テスト（ユーザーの Clipboard を上書きするため明示実行）
 
@@ -56,7 +59,7 @@ CI の `windows` ジョブでは毎回実行する（ランナーは使い捨て
 ```sh
 cargo build -p tsute-desktop
 python3 e2e/run_e2e.py --target local                  # ローカル開発サーバー
-python3 e2e/run_e2e.py --target cloud --env test       # デプロイ済み AWS（infra/.build/test.json を使用）
+python3 e2e/run_e2e.py --target cloud --env test       # デプロイ済み AWS（infra/.build/test.json を使用。Endpoint は e2e Namespace に登録）
 python3 e2e/run_e2e.py --binary target/release/bundle/macos/Tsute.app/Contents/MacOS/tsute   # .app で実行
 ```
 
@@ -70,11 +73,15 @@ Text（inline / 64KiB 超）、Image、Video（file URL / 実データ）、複�
 ```sh
 cargo run -p tsute-server-local --bin tsute-devserver -- --data-dir target/devserver   # 別ターミナル
 curl -s -X POST -H "x-admin-token: $(cat target/devserver/admin-token)" http://127.0.0.1:8787/admin/enrollment-keys
+# 別の Namespace に登録する Key（本文を省略すると default）
+curl -s -X POST -H "x-admin-token: $(cat target/devserver/admin-token)" -d '{"namespace":"team-a"}' http://127.0.0.1:8787/admin/enrollment-keys
 target/debug/tsute --profile test-a --show
 target/debug/tsute --profile test-b --show
 ```
 
-AWS の場合は `scripts/admin.sh <env> issue-key` で Enrollment Key を発行する。
+AWS の場合は `scripts/admin.sh <env> issue-key <namespace>` で Enrollment Key を発行する（Namespace は必須。
+同じ Namespace の Endpoint 同士だけが送受信できる。既存の Endpoint は `default`。ADR-0017）。
+一覧は `scripts/admin.sh <env> list [namespace]`。
 
 ## 5. .app バンドル
 
