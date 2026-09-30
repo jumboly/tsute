@@ -1,6 +1,6 @@
 # 進捗
 
-最終更新: 2026-09-29
+最終更新: 2026-09-30
 
 ## 現在地
 
@@ -59,6 +59,20 @@ Namespace を紐付け、一覧・転送・一斉通知を同じ Namespace 内�
   Mac は ad-hoc 署名・版 0.1.0。test 環境の `/api/health` は `commit: 7e7f17c`。
   未確認: リリース版アプリの設定画面での表示（実機）、Web の設定画面での版表示（次の deploy-web 以降）。
 
+**デスクトップ版の HTTP プロキシ対応（2026-09-30, PR）。** 外への直接接続が遮断され、プロキシ経由でしか出られない
+ネットワーク（社内 LAN）の Windows 実機で、REST だけ通って WebSocket が常時オフライン、受信が 411 で止まっていた。
+- WebSocket: tungstenite はプロキシを扱わないため、REST（reqwest）と同じ判定（hyper-util の `Matcher::from_system()`:
+  環境変数 → OS の設定）で対象なら `CONNECT` でトンネルを張ってからハンドシェイクする。Basic 認証は URL の userinfo から。
+- 本文のない POST / DELETE（`received` 等）に `Content-Length: 0` を明示（付けないと 411 を返すプロキシがある）。
+- テスト: 偽プロキシ経由の往復・407・NO_PROXY の直接接続、送信バイト列での Content-Length（修正を外すと失敗することを確認）。
+  client-core の単体 5 / 結合 10 通過、clippy 警告なし（Windows）。
+- **2026-09-30 Windows 11 実機（社内ネットワーク）で確認**: 修正版が `online: true`（reach: websocket）になり、Mac との送受信が動く
+  （ユーザー確認）。修正前は `ws connect: TLS error … (os error 10054)` と `download failed … api 411`。
+- 注意: TLS 検査型のプロキシは Upgrade 後の WebSocket を中継しないことがある（Web 版で確認: `$connect` はサーバーに届くが
+  ブラウザ側は失敗）。その場合は接続先ホストを検査の対象外にしてもらう必要がある（`*.cloudfront.net` が対象外の環境では、
+  CloudFront の URL を APP_BASE_URL にすると通った）。
+- 未確認: macOS でのプロキシ経由接続（CI のビルドとテストのみ）、プロキシ認証（407 以外の方式）、`https://` / socks のプロキシ（未対応でエラーにする）。
+
 GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）と fork の https://github.com/mianst9524/tsute。
 
 **Phase W（Web / PWA）実装済み・iPhone 実機確認済み（2026-09-27）。Android は端末が無く保留。** ユーザー指示で Windows より先に着手。
@@ -104,6 +118,9 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 ## 既知の問題 / 注意
 
 - CI の `web-e2e` が WebKit だけ不安定。失敗したジョブを再実行して成功を確認してからマージする → #4
+- `admin.sh revoke` が、失効する Endpoint の未完了の転送が残っていると `service error` を返す。Endpoint・トークン・Push 購読は
+  消えるが、管理用 Lambda のロールに `dynamodb:UpdateItem` と S3（ListBucket / DeleteObject）が無く、転送の取り消しと一時データの
+  削除で AccessDenied になる（`infra/cloudformation/backend.yaml` の `AdminFunctionRole`）。残った転送は TTL・ライフサイクルで消える。
 - CI の Rust は stable 追従（2026-09-29 時点 1.98.1）。手元が古いと新しい clippy lint を見逃すので `rustup update stable` しておく。
 
 - Web: Playwright の WebKit ビルドでは `pushManager.getSubscription()` がページごと固まる。通知許可が無いときは
