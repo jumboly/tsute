@@ -54,7 +54,10 @@ Namespace を紐付け、一覧・転送・一斉通知を同じ Namespace 内�
 
 **リリースとコミットの表示（2026-09-30, PR）。** `v*` タグの push で Mac（arm64）/ Windows のアプリを添付したリリースの
 下書きを作る（接続先 URL は埋め込まない）。デスクトップの設定画面・Backend の `/api/health`・Web の設定画面にコミットを表示。
-0.1.0 を最初のリリースにする。
+- 2026-09-30 `v0.1.0` のタグで Release が成功し、下書きを作成（公開はユーザー）。添付: Mac arm64 / Windows x64 の zip と
+  SHA256SUMS（ダウンロードして一致を確認）。どちらのバイナリにもコミット 7e7f17c が入り、独自ドメインは入っていない。
+  Mac は ad-hoc 署名・版 0.1.0。test 環境の `/api/health` は `commit: 7e7f17c`。
+  未確認: リリース版アプリの設定画面での表示（実機）、Web の設定画面での版表示（次の deploy-web 以降）。
 
 GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）と fork の https://github.com/mianst9524/tsute。
 

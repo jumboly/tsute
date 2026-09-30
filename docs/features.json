@@ -463,7 +463,7 @@
       "area": "ci",
       "title": "リリース（v* タグで Mac / Windows のアプリを添付した下書きを作る）とビルドしたコミットの表示 — ADR-0010",
       "status": "in_progress",
-      "notes": "2026-09-30 実装。コミットの埋め込みを手元で確認（/api/health の commit、-dirty、GITHUB_SHA の優先）、ローカル Web E2E 26/26（設定画面の版表示を追加）、actionlint 通過。未確認: release.yml の実行（v0.1.0 のタグ push 後）、デスクトップ設定画面の表示"
+      "notes": "2026-09-30 実装。v0.1.0 で Release が成功し下書きを作成（添付 3 件、SHA256 一致、バイナリにコミット 7e7f17c、ドメインなし、Mac は ad-hoc）。/api/health の commit をデプロイ後に確認。ローカル Web E2E 26/26（版表示の検査を追加）。未確認: リリース版アプリの設定画面の表示（実機）、公開後のダウンロードからの起動"
     }
   ]
 }
