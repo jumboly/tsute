@@ -13,8 +13,14 @@ if [[ -f "infra/env/${ENV_NAME}.env" ]]; then
 fi
 : "${AWS_REGION:?AWS_REGION is required}"
 PARAM="/tsute/${ENV_NAME}/vapid-private-key"
+# --overwrite と --tags は併用できないので、作成後（既存なら今）に付ける。ADR-0009
+tag_param() {
+  aws ssm add-tags-to-resource --region "$AWS_REGION" --resource-type Parameter --resource-id "$PARAM" \
+    --tags Key=app,Value=tsute "Key=env,Value=${ENV_NAME}"
+}
 
 if aws ssm get-parameter --region "$AWS_REGION" --name "$PARAM" >/dev/null 2>&1 && [[ "$ROTATE" != "--rotate" ]]; then
+  tag_param
   echo "既に存在します: ${PARAM}（作り直す場合は --rotate）"
   exit 0
 fi
@@ -26,6 +32,7 @@ target/debug/tsute-vapid-keygen "$TMP/key"
 # file:// で渡し、鍵がプロセス一覧（コマンドライン引数）に現れないようにする
 aws ssm put-parameter --region "$AWS_REGION" --name "$PARAM" --type SecureString --overwrite \
   --value "file://$TMP/key" >/dev/null
+tag_param
 echo "作成しました: ${PARAM}"
 
 # API 関数は起動時に鍵を読む。コードが変わらないと infra/deploy.sh は Lambda を更新しない（実行環境が残る）ため、

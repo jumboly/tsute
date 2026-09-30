@@ -97,7 +97,7 @@ OS 通知とログイン項目（SMAppService）は .app として起動した�
 ドメイン名はリポジトリに書かず、`infra/env/<env>.env`（gitignore 済み）にだけ置く。
 
 ```sh
-infra/request-cert.sh <fqdn>                 # us-east-1 に ACM 証明書を要求
+infra/request-cert.sh <fqdn> <env>           # us-east-1 に ACM 証明書を要求（コスト配分タグ付き）
 # infra/env/<env>.env に TSUTE_APP_DOMAIN と TSUTE_CERT_ARN を設定
 infra/route53-subdomain.sh <env>             # 親ゾーンが CNAME 検証を拒否する場合: Route 53 に委任（NS を表示）
 # ユーザーが親ゾーンに NS（または検証用 CNAME + CNAME）を追加 → 証明書が ISSUED になるのを待つ
