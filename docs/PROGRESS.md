@@ -48,6 +48,10 @@ Namespace を紐付け、一覧・転送・一斉通知を同じ Namespace 内�
   GitHub Environment `test` に設定値を登録（`AWS_REGION` のみ Variables、ほかは Secrets。ADR-0010）。
   Deploy backend 成功（run 36577497594）、ログに独自ドメイン・アカウント ID が出ないことを確認。
 
+**コスト配分タグ（2026-09-30, PR #19）。** 全リソースに `app=tsute` / `env=<env>`（bootstrap は `env=shared`）。test 環境に
+デプロイ済みで、スタック外の証明書・ホストゾーン・SSM も `infra/tag-resources.sh test` で付け直した（21 件を確認）。
+請求コンソールでのコスト配分タグの有効化はユーザー作業（未実施）。
+
 **リリースとコミットの表示（2026-09-30, PR）。** `v*` タグの push で Mac（arm64）/ Windows のアプリを添付したリリースの
 下書きを作る（接続先 URL は埋め込まない）。デスクトップの設定画面・Backend の `/api/health`・Web の設定画面にコミットを表示。
 0.1.0 を最初のリリースにする。
