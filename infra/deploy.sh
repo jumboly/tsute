@@ -16,6 +16,8 @@ ARTIFACT_BUCKET="tsute-artifacts-${ACCOUNT_ID}-${AWS_REGION}"
 CFN_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/tsute-cfn-exec"
 OUT_DIR="infra/.build"
 mkdir -p "$OUT_DIR"
+# コスト配分タグ（ADR-0009）。スタックのタグは、タグに対応したスタック内の全リソースへ伝わる
+STACK_TAGS=(app=tsute "env=${ENV_NAME}")
 
 echo "==> Building Lambda (arm64)"
 if ! command -v zig >/dev/null; then
@@ -47,6 +49,7 @@ aws cloudformation deploy --region "$AWS_REGION" \
   --role-arn "$CFN_ROLE_ARN" \
   --capabilities CAPABILITY_IAM \
   --no-fail-on-empty-changeset \
+  --tags "${STACK_TAGS[@]}" \
   --parameter-overrides EnvName="$ENV_NAME" ArtifactBucket="$ARTIFACT_BUCKET" LambdaS3Key="$KEY" AppOrigin="$APP_ORIGIN"
 
 out() { aws cloudformation describe-stacks --region "$1" --stack-name "$2" --query "Stacks[0].Outputs[?OutputKey=='$3'].OutputValue" --output text; }
@@ -61,6 +64,7 @@ aws cloudformation deploy --region "$EDGE_REGION" \
   --role-arn "$CFN_ROLE_ARN" \
   --capabilities CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset \
+  --tags "${STACK_TAGS[@]}" \
   --parameter-overrides EnvName="$ENV_NAME" HttpApiDomain="$HTTP_DOMAIN" WsApiDomain="$WS_DOMAIN" \
     AppDomainName="${TSUTE_APP_DOMAIN:-}" CertificateArn="${TSUTE_CERT_ARN:-}" GitHubBlogRepo="${TSUTE_GITHUB_BLOG_REPO:-}" \
     TransferBucketDomain="$TRANSFER_DOMAIN" GitHubAppRepo="${TSUTE_GITHUB_APP_REPO:-}"

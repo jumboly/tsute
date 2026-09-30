@@ -87,7 +87,7 @@ infra/deploy-web.sh <env>
 独自ドメインを使う場合の手順です。
 
 ```sh
-infra/request-cert.sh <fqdn>          # us-east-1 に ACM 証明書を要求し、DNS 検証用の CNAME を表示する
+infra/request-cert.sh <fqdn> <env>    # us-east-1 に ACM 証明書を要求し、DNS 検証用の CNAME を表示する
 # infra/env/<env>.env に TSUTE_APP_DOMAIN と TSUTE_CERT_ARN を設定する
 # DNS に検証用の CNAME を追加する（親ゾーンの DNS 事業者が受け付けない場合は、次のスクリプトでサブドメインを Route 53 に委任する）
 infra/route53-subdomain.sh <env>      # 任意: Route 53 に委任し、親ゾーンに追加すべき NS レコードを表示する
@@ -98,6 +98,18 @@ infra/route53-subdomain.sh <env>      # 委任している場合: CloudFront へ
 
 接続先の URL を変えると、Web / PWA は別のオリジンになるため、登録し直しが必要です。
 デスクトップアプリは登録時の URL を使い続けます。
+
+### コストの集計
+
+すべてのリソースに、コスト配分タグ `app=tsute` と `env=<env>` を付けます（bootstrap のリソースは `env=shared`）。
+CloudFormation のスタックは `deploy.sh` / `bootstrap.sh` が、スタックの外で作るもの（証明書、ホストゾーン、VAPID 鍵）は
+それぞれの作成スクリプトがタグを付けます。
+
+1. 請求コンソールの「コスト配分タグ」で、ユーザー定義タグの `app` と `env` を有効にします（初回だけ。タグが付いてから
+   候補に現れ、反映まで最大 24 時間かかります）。
+2. Cost Explorer で `app` タグ（または `env` タグ）でグループ化すると、アプリ・環境ごとの費用が見られます。
+
+`infra/tag-resources.sh <env> --check` で、タグの付いたリソースを一覧できます。
 
 ### 更新
 
