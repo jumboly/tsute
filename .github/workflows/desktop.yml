@@ -3,10 +3,10 @@ name: Desktop build
 on:
   push:
     branches: [main]
-    paths: ["apps/**", "crates/**", "Cargo.lock", ".github/workflows/desktop.yml"]
+    paths: ["apps/**", "crates/**", "build-support/**", "scripts/check-windows-exe.ps1", "Cargo.lock", ".github/workflows/desktop.yml"]
   # パッケージングの失敗（アイコン・バンドル設定など）をマージ前に見つけるため PR でも作る
   pull_request:
-    paths: ["apps/**", "crates/**", "Cargo.lock", ".github/workflows/desktop.yml"]
+    paths: ["apps/**", "crates/**", "build-support/**", "scripts/check-windows-exe.ps1", "Cargo.lock", ".github/workflows/desktop.yml"]
   workflow_dispatch:
     inputs:
       environment:
@@ -74,17 +74,9 @@ jobs:
       - name: Check the exe runs without extra DLLs
         shell: pwsh
         run: |
-          $exe = "target/release/tsute.exe"
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $dumpbin = & $vswhere -latest -products * -find "VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
-          $deps = & $dumpbin /nologo /dependents $exe | Where-Object { $_ -match '^\s+\S+\.dll$' } | ForEach-Object { $_.Trim() }
-          if (-not $deps) { throw "could not read imports of tsute.exe" }
-          Write-Output "imports: $($deps -join ', ')"
-          # Windows に標準で入っていない DLL（VC++ ランタイム・WebView2Loader）に依存していたら失敗させる
-          $bad = $deps | Where-Object { $_ -match '^(vcruntime|msvcp|WebView2Loader)' }
-          if ($bad) { throw "tsute.exe depends on: $($bad -join ', ')" }
+          ./scripts/check-windows-exe.ps1 target/release/tsute.exe
           New-Item -ItemType Directory -Force Tsute-windows | Out-Null
-          Copy-Item $exe Tsute-windows/tsute.exe
+          Copy-Item target/release/tsute.exe Tsute-windows/tsute.exe
           Get-ChildItem Tsute-windows
       # 現状はコード署名なし（SmartScreen の警告が出る）。配布時は署名を追加する（docs/PROGRESS.md 参照）
       - uses: actions/upload-artifact@v4

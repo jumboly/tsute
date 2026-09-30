@@ -48,6 +48,10 @@ Namespace を紐付け、一覧・転送・一斉通知を同じ Namespace 内�
   GitHub Environment `test` に設定値を登録（`AWS_REGION` のみ Variables、ほかは Secrets。ADR-0010）。
   Deploy backend 成功（run 36577497594）、ログに独自ドメイン・アカウント ID が出ないことを確認。
 
+**リリースとコミットの表示（2026-09-30, PR）。** `v*` タグの push で Mac（arm64）/ Windows のアプリを添付したリリースの
+下書きを作る（接続先 URL は埋め込まない）。デスクトップの設定画面・Backend の `/api/health`・Web の設定画面にコミットを表示。
+0.1.0 を最初のリリースにする。
+
 GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）と fork の https://github.com/mianst9524/tsute。
 
 **Phase W（Web / PWA）実装済み・iPhone 実機確認済み（2026-09-27）。Android は端末が無く保留。** ユーザー指示で Windows より先に着手。

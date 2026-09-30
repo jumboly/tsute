@@ -9,6 +9,7 @@ on:
       - "crates/server-core/**"
       - "crates/server-lambda/**"
       - "crates/webpush/**"
+      - "build-support/**"
       - "infra/**"
       - "Cargo.lock"
       - ".github/workflows/deploy-backend.yml"

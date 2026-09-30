@@ -256,6 +256,12 @@ fn main() {
         }
     };
     init_logging(&profile.root);
+    // 不具合の報告時にログだけで版を特定できるように
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        commit = env!("TSUTE_GIT_COMMIT"),
+        "starting"
+    );
 
     // 同一プロファイルの二重起動は WebSocket・ダウンロードが競合するので拒否する
     let lock = std::fs::OpenOptions::new()
