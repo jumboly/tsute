@@ -139,19 +139,32 @@ impl Api {
         // 401 はトークン失効（サーバー側の期限・revoke）の可能性があるので 1 回だけ取り直す
         for attempt in 0..2 {
             let tok = self.token().await?;
-            let mut rb = self
-                .http
-                .request(method.clone(), format!("{}{path}", self.base_url))
-                .bearer_auth(tok);
-            if let Some(b) = body {
-                rb = rb.json(b);
-            }
-            match read_json(rb.send().await?).await {
+            match read_json(self.request(method.clone(), path, &tok, body).send().await?).await {
                 Err(Error::Api { status: 401, .. }) if attempt == 0 => self.invalidate().await,
                 r => return r,
             }
         }
         unreachable!()
+    }
+
+    fn request<B: Serialize>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        token: &str,
+        body: Option<&B>,
+    ) -> reqwest::RequestBuilder {
+        let may_have_body = method != reqwest::Method::GET && method != reqwest::Method::HEAD;
+        let rb = self
+            .http
+            .request(method, format!("{}{path}", self.base_url))
+            .bearer_auth(token);
+        match body {
+            Some(b) => rb.json(b),
+            // 本文なしの POST 等は Content-Length が付かず、411 で拒否するプロキシがあるため明示する
+            None if may_have_body => rb.header(reqwest::header::CONTENT_LENGTH, 0),
+            None => rb,
+        }
     }
 
     pub async fn me(&self) -> Result<MeResponse, Error> {
@@ -276,5 +289,52 @@ impl Api {
         } else {
             format!("{b}/ws")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// 1 回だけ要求を受け、ヘッダー部分（小文字化）を返して 200 `{}` を答えるサーバー
+    async fn capture(method: reqwest::Method, body: Option<&serde_json::Value>) -> String {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", l.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut s, _) = l.accept().await.unwrap();
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut b = [0u8; 1];
+                s.read_exact(&mut b).await.unwrap();
+                head.push(b[0]);
+            }
+            let head = String::from_utf8(head).unwrap().to_ascii_lowercase();
+            // 本文を読み残して閉じると RST になるので読み切ってから答える
+            let len = head
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length: "))
+                .map_or(0, |v| v.trim().parse::<usize>().unwrap());
+            s.read_exact(&mut vec![0; len]).await.unwrap();
+            s.write_all(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}")
+                .await
+                .unwrap();
+            head
+        });
+        let api = Api::new(base, "ep_test".into(), SigningKey::from_bytes(&[7; 32]));
+        api.request(method, "/api/x", "tok", body).send().await.unwrap();
+        server.await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn bodyless_requests_send_zero_content_length() {
+        for m in [reqwest::Method::POST, reqwest::Method::DELETE] {
+            let head = capture(m, None).await;
+            assert!(head.contains("\r\ncontent-length: 0\r\n"), "{head}");
+        }
+        // 本文ありは reqwest が実際の長さを付ける（二重に付かない）
+        let head = capture(reqwest::Method::POST, Some(&serde_json::json!({"a": 1}))).await;
+        assert_eq!(head.matches("content-length:").count(), 1, "{head}");
+        assert!(head.contains("\r\ncontent-length: 7\r\n"), "{head}");
     }
 }
