@@ -14,6 +14,8 @@ use tsute_proto::*;
 use crate::traits::*;
 
 pub const ENROLLMENT_KEY_PREFIX: &str = "tsute-ek-";
+/// ビルドしたコミット（短いハッシュ。build.rs が埋め込む）
+pub const BUILD_COMMIT: &str = env!("TSUTE_GIT_COMMIT");
 const TOKEN_PREFIX: &str = "tsute-at-";
 const WS_TICKET_PREFIX: &str = "tsute-wt-";
 /// Namespace 導入前に登録された Endpoint が属する Namespace
@@ -362,7 +364,8 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
         match (m, seg.as_slice()) {
             ("GET", ["api", "health"]) => Ok(Response::json(
                 200,
-                &serde_json::json!({"ok": true, "protocol_version": PROTOCOL_VERSION}),
+                // commit はデプロイ済みの版の確認用（公開されても困らない短いハッシュだけ）
+                &serde_json::json!({"ok": true, "protocol_version": PROTOCOL_VERSION, "commit": BUILD_COMMIT}),
             )),
             ("POST", ["api", "enroll"]) => self.enroll(parse(&req.body)?).await,
             ("POST", ["api", "auth", "challenge"]) => self.challenge(parse(&req.body)?).await,

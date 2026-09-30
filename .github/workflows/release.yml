@@ -1,0 +1,112 @@
+name: Release
+
+# v<版番号> のタグを push すると、Mac / Windows のアプリを添付したリリースの下書きを作る。
+# 公開は内容を確かめてから GitHub 上で行う（誤ったビルドを公開しないため）。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  TAURI_CLI_VERSION: 2.12.0
+  # 公開リリースには接続先を埋め込まない（利用者ごとに自分の環境の URL を登録画面で入れる）。
+  # Environment を使わないので vars.APP_BASE_URL も読まれないが、意図を明示するため空にしておく
+  TSUTE_DEFAULT_BASE_URL: ""
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      # タグとアプリが表示する版番号（Cargo.toml）が食い違ったリリースを作らない
+      - id: v
+        run: |
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          if [[ "${GITHUB_REF_NAME}" != "v${VERSION}" ]]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${VERSION}"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # tauri-cli はソースからビルドし、版ごとにキャッシュする（desktop.yml と同じ理由）
+      - uses: actions/cache@v4
+        id: tauri-cli
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-${{ env.TAURI_CLI_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "=${{ env.TAURI_CLI_VERSION }}" --locked
+      - run: cd apps/desktop && cargo tauri build --bundles app
+      # ad-hoc 署名（Developer ID の署名・公証は未対応, #8）。ditto で拡張属性と署名を保ったまま zip にする
+      - run: |
+          cd target/release/bundle/macos
+          ditto -c -k --keepParent Tsute.app "Tsute-${{ needs.version.outputs.version }}-macos-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: target/release/bundle/macos/Tsute-*-macos-arm64.zip
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        id: tauri-cli
+        with:
+          path: ~/.cargo/bin/cargo-tauri.exe
+          key: tauri-cli-${{ env.TAURI_CLI_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "=${{ env.TAURI_CLI_VERSION }}" --locked
+      - run: cargo tauri build --no-bundle
+        working-directory: apps/desktop
+      # フォルダコピーで動く（追加の DLL が要らない）ことを確かめてから zip にする（ADR-0016）
+      - shell: pwsh
+        run: |
+          ./scripts/check-windows-exe.ps1 target/release/tsute.exe
+          $name = "Tsute-${{ needs.version.outputs.version }}-windows-x64"
+          New-Item -ItemType Directory -Force $name | Out-Null
+          Copy-Item target/release/tsute.exe "$name/tsute.exe"
+          Compress-Archive -Path $name -DestinationPath "$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: Tsute-*-windows-x64.zip
+
+  release:
+    needs: [version, macos, windows]
+    runs-on: ubuntu-latest
+    # リリースの作成に必要な権限は、ビルドを伴わないこのジョブだけに与える
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: |
+          cd dist
+          sha256sum Tsute-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          sed "s/{{VERSION}}/${VERSION}/g" .github/release-notes.md > notes.md
+          # --generate-notes の内容（前回リリースからの PR 一覧）は notes.md の後ろに付く
+          gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag \
+            --title "つて ${VERSION}" --notes-file notes.md --generate-notes

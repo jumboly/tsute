@@ -118,6 +118,15 @@ CloudFormation のスタックは `deploy.sh` / `bootstrap.sh` が、スタッ�
   `AWS_DEPLOY_ROLE_ARN`（bootstrap の出力 `AppDeployRoleArn`）・`TSUTE_APP_DOMAIN`・`TSUTE_CERT_ARN`・`TSUTE_GITHUB_BLOG_REPO`
   は Secrets に置きます。値は `infra/env/<env>.env` とそろえてください（ずれていると、CI のデプロイで CloudFront の設定が書き換わります）。
 - Web クライアント: `infra/deploy-web.sh <env>`（Backend には触れません）
+- デプロイ済みの版は `<APP_BASE_URL>/api/health` の `commit`（Backend）と、Web の設定画面の「バージョン」で確かめられます。
+
+### アプリのリリース
+
+1. `Cargo.toml` の `[workspace.package]` の `version` を上げ、main にマージします。
+2. `git tag v<version> && git push origin v<version>` を実行します。
+3. GitHub Actions（`release.yml`）が Mac（Apple Silicon）と Windows のアプリをビルドし、`SHA256SUMS.txt` と一緒に
+   リリースの **下書き** に添付します。タグと `version` が一致しないときは失敗します。
+4. 下書きの内容（添付ファイル・リリースノート）を確かめ、GitHub 上で公開します。
 
 ## 4. 管理
 
@@ -139,14 +148,20 @@ scripts/admin.sh <env> revoke <endpoint_id>    # Endpoint を失効（トーク�
 どのクライアントも、登録画面で **接続先 URL**、**Enrollment Key**、**Endpoint 名** を入力します。
 Key は管理者が `issue-key` で発行し、10 分以内に使います。1 つの Key で登録できるのは 1 回だけです。
 
+Mac / Windows のアプリは [Releases](https://github.com/jumboly/tsute/releases) からダウンロードできます
+（インストール手順と OS の警告への対処はリリースノートにあります）。リリースのアプリには接続先 URL が入っていないので、
+登録画面で自分の環境の `APP_BASE_URL` を入力します。設定画面の「バージョン」に、版番号とコミット（例: `0.1.0 (9c11edf)`）が表示されます。
+
 ### Mac
+
+リリースの `Tsute-<版>-macos-arm64.zip`（Apple Silicon 用）を展開して使います。自分でビルドする場合:
 
 ```sh
 cd apps/desktop && TSUTE_DEFAULT_BASE_URL=<APP_BASE_URL> cargo tauri build --bundles app
 open target/release/bundle/macos/Tsute.app
 ```
 
-- `TSUTE_DEFAULT_BASE_URL` を指定すると、登録画面の URL 欄にその値が最初から入ります。指定しなければ手で入力します。
+- `TSUTE_DEFAULT_BASE_URL` を指定してビルドすると、登録画面の URL 欄にその値が最初から入ります。指定しなければ手で入力します。
 - メニューバーに常駐します。ウィンドウを閉じても受信は続きます。終了はメニューの「つて を終了」です。
 - 現在は ad-hoc 署名です（配布用の署名と公証は未対応）。ビルドし直すと、初回起動時に Keychain へのアクセス許可ダイアログが出ます。
 - OS の通知は ad-hoc 署名では出ないため、受信するとメニューバーのアイコンに印が付きます。
@@ -155,8 +170,8 @@ open target/release/bundle/macos/Tsute.app
 
 ### Windows
 
-- GitHub Actions の `desktop.yml` がビルドした artifact `Tsute-windows`（`tsute.exe` が入ったフォルダ）を取得し、
-  `%LOCALAPPDATA%\Programs\tsute\` などに置いて実行します。インストーラーはありません。
+- リリースの `Tsute-<版>-windows-x64.zip` を展開し、フォルダを `%LOCALAPPDATA%\Programs\tsute\` などに置いて
+  `tsute.exe` を実行します。インストーラーはありません。
   手元でビルドする場合は `cd apps/desktop && cargo tauri build --no-bundle` です（Visual Studio Build Tools が必要）。
 - 前提は WebView2 ランタイムです（Windows 11 と更新済みの Windows 10 には標準で入っています）。
 - コード署名がないため、初回は SmartScreen の警告が出ます。

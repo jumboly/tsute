@@ -79,7 +79,8 @@ pub async fn get_state(app: AppHandle, st: State<'_, AppState>) -> CmdResult<UiS
         last_receiver: cfg.as_ref().and_then(|c| c.last_receiver.clone()),
         login_item,
         platform: if cfg!(windows) { "windows" } else { "macos" },
-        version: env!("CARGO_PKG_VERSION").into(),
+        // 同じ版番号のビルドを区別できるよう、コミットも併記する
+        version: format!("{} ({})", env!("CARGO_PKG_VERSION"), env!("TSUTE_GIT_COMMIT")),
     })
 }
 

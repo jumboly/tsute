@@ -26,5 +26,16 @@ aws s3 sync web/ "s3://${BUCKET}/app/" --delete --only-show-errors \
 # .webmanifest は拡張子から MIME が推定されないことがあるため明示する
 aws s3 cp web/manifest.webmanifest "s3://${BUCKET}/app/manifest.webmanifest" --only-show-errors \
   --content-type "application/manifest+json" --cache-control "no-cache"
+# 配信する版（設定画面に表示する）。sync の --delete で消えないよう sync の後に置く。
+# コミットは手元の HEAD（未コミットの変更があれば -dirty）。CI では GITHUB_SHA
+VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+if [[ -n "${GITHUB_SHA:-}" ]]; then
+  COMMIT="${GITHUB_SHA:0:7}"
+else
+  COMMIT="$(git rev-parse --short=7 HEAD)"
+  [[ -n "$(git status --porcelain --untracked-files=no -- web)" ]] && COMMIT="${COMMIT}-dirty"
+fi
+printf '{"version":"%s","commit":"%s"}\n' "$VERSION" "$COMMIT" | aws s3 cp - "s3://${BUCKET}/app/version.json" \
+  --only-show-errors --content-type "application/json" --cache-control "no-cache"
 aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/app" "/app/*" --query Invalidation.Id --output text
 echo "==> Deployed web client to /app/"

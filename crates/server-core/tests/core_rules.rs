@@ -320,3 +320,14 @@ async fn revoked_endpoint_token_is_invalid() {
     .await;
     assert_eq!(d["transfer"]["state"], "cancelled");
 }
+
+#[tokio::test]
+async fn health_reports_build_commit() {
+    // デプロイ済みの版を /api/health で確かめられること（認証不要）
+    let c = core();
+    let (s, v) = req(&c, "GET", "/api/health", None, serde_json::Value::Null).await;
+    assert_eq!(s, 200);
+    let commit = v["commit"].as_str().unwrap();
+    assert_eq!(commit, tsute_server_core::BUILD_COMMIT);
+    assert!(!commit.is_empty());
+}

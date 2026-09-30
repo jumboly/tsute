@@ -700,8 +700,24 @@ $("open-settings").addEventListener("click", async () => {
     : "永続化されていません（Browser Data の削除などで消えたら再登録が必要）";
   show("settings");
   renderPush();
+  renderVersion();
 });
 $("close-settings").addEventListener("click", () => show("main"));
+
+/** 配信中の版。`version.json` は infra/deploy-web.sh が配信時に書く（開発サーバーは自分の版を返す）。取れなければ「開発版」 */
+async function renderVersion() {
+  let text = "開発版";
+  try {
+    const r = await fetch("version.json", { cache: "no-store" });
+    if (r.ok) {
+      const v = await r.json();
+      if (typeof v.version === "string" && typeof v.commit === "string") text = `${v.version} (${v.commit})`;
+    }
+  } catch {
+    // オフライン等。版の表示は補助情報なので失敗しても設定画面は使える
+  }
+  $("set-version").textContent = text;
+}
 
 $("set-name-save").addEventListener("click", async () => {
   try {

@@ -233,6 +233,15 @@ async fn app_static(State(st): State<AppState>, uri: Uri) -> Response {
     if rel.split('/').any(|s| s == ".." || s.is_empty() || s.starts_with('.')) {
         return StatusCode::NOT_FOUND.into_response();
     }
+    // 本番では infra/deploy-web.sh が配信時に書くファイル。リポジトリには無いので、開発サーバー自身の版を返す
+    if rel == "version.json" && !dir.join(rel).exists() {
+        let v = serde_json::json!({"version": env!("CARGO_PKG_VERSION"), "commit": tsute_server_core::BUILD_COMMIT});
+        return (
+            [("content-type", "application/json"), ("cache-control", "no-cache")],
+            v.to_string(),
+        )
+            .into_response();
+    }
     let Ok(body) = tokio::fs::read(dir.join(rel)).await else {
         // Share Target の POST 等は Service Worker が処理する。SW が無い（未インストール）ときの受け皿
         return StatusCode::NOT_FOUND.into_response();
