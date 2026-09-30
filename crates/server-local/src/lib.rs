@@ -24,7 +24,7 @@ use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use tsute_server_core::memory::{ChannelNotifier, MemoryStore};
 use tsute_server_core::traits::{BlobStore, PresignedPut, Result as CoreResult};
-use tsute_server_core::{Config, Core, Request};
+use tsute_server_core::{Config, Core, DEFAULT_NAMESPACE, Request, validate_namespace};
 use tsute_webpush::VapidPusher;
 
 /// ファイルシステム上の Object Storage。URL は HMAC で署名し、S3 presigned URL と同様に
@@ -129,7 +129,10 @@ pub struct Server {
 
 impl Server {
     pub async fn issue_enrollment_key(&self) -> String {
-        self.state.core.issue_enrollment_key().await.expect("issue").0
+        self.issue_enrollment_key_in(DEFAULT_NAMESPACE).await
+    }
+    pub async fn issue_enrollment_key_in(&self, namespace: &str) -> String {
+        self.state.core.issue_enrollment_key(namespace).await.expect("issue").0
     }
 }
 
@@ -230,6 +233,15 @@ async fn app_static(State(st): State<AppState>, uri: Uri) -> Response {
     if rel.split('/').any(|s| s == ".." || s.is_empty() || s.starts_with('.')) {
         return StatusCode::NOT_FOUND.into_response();
     }
+    // 本番では infra/deploy-web.sh が配信時に書くファイル。リポジトリには無いので、開発サーバー自身の版を返す
+    if rel == "version.json" && !dir.join(rel).exists() {
+        let v = serde_json::json!({"version": env!("CARGO_PKG_VERSION"), "commit": tsute_server_core::BUILD_COMMIT});
+        return (
+            [("content-type", "application/json"), ("cache-control", "no-cache")],
+            v.to_string(),
+        )
+            .into_response();
+    }
     let Ok(body) = tokio::fs::read(dir.join(rel)).await else {
         // Share Target の POST 等は Service Worker が処理する。SW が無い（未インストール）ときの受け皿
         return StatusCode::NOT_FOUND.into_response();
@@ -259,13 +271,30 @@ async fn app_static(State(st): State<AppState>, uri: Uri) -> Response {
         .into_response()
 }
 
-async fn admin_issue(State(st): State<AppState>, headers: HeaderMap) -> Response {
+/// 本文 `{"namespace": "..."}` は省略可（省略時は既定の Namespace）。ローカル開発と既存 E2E を手軽に保つため
+async fn admin_issue(State(st): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
     let ok = headers.get("x-admin-token").and_then(|v| v.to_str().ok()) == Some(st.admin_token.as_str());
     if !ok {
         return StatusCode::FORBIDDEN.into_response();
     }
-    match st.core.issue_enrollment_key().await {
-        Ok((key, exp)) => axum::Json(serde_json::json!({"enrollment_key": key, "expires_at": exp})).into_response(),
+    let ns = if body.is_empty() {
+        DEFAULT_NAMESPACE.to_string()
+    } else {
+        match serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("namespace").and_then(|n| n.as_str()).map(str::to_string))
+        {
+            Some(ns) => ns,
+            None => return StatusCode::BAD_REQUEST.into_response(),
+        }
+    };
+    if let Err(m) = validate_namespace(&ns) {
+        return (StatusCode::BAD_REQUEST, m).into_response();
+    }
+    match st.core.issue_enrollment_key(&ns).await {
+        Ok((key, exp)) => {
+            axum::Json(serde_json::json!({"enrollment_key": key, "namespace": ns, "expires_at": exp})).into_response()
+        }
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }

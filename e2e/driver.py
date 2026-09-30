@@ -1,6 +1,6 @@
 """つて デスクトップアプリの E2E ドライバ（ADR-0013）。
 
-アプリを `--automation`（+ TSUTE_AUTOMATION=1）で起動し、プロファイル内の Unix ソケット経由で
+アプリを `--automation`（+ TSUTE_AUTOMATION=1）で起動し、プロファイル内の Unix ソケット（Windows は名前付きパイプ）経由で
 WebView の DOM を操作する。ボタンのクリック → Tauri コマンド → client-core → Cloud という本番と同じ経路を通る。
 外部依存なし（標準ライブラリのみ）。
 """
@@ -10,6 +10,19 @@ import socket
 import subprocess
 import time
 from pathlib import Path
+
+
+class _Pipe:
+    """Windows の名前付きパイプをソケットと同じ sendall / recv で扱う"""
+
+    def __init__(self, path):
+        self._f = open(path, "r+b", buffering=0)
+
+    def sendall(self, data):
+        self._f.write(data)
+
+    def recv(self, n):
+        return self._f.read(n)
 
 
 class App:
@@ -37,7 +50,13 @@ class App:
             path_file = self.sock_path.with_suffix(".sock.path")
             if path_file.exists():
                 self.sock_path = Path(path_file.read_text())
-            if self.sock_path.exists():
+            if os.name == "nt" and path_file.exists():
+                try:
+                    self._sock = _Pipe(str(self.sock_path))
+                    return self
+                except OSError:
+                    pass
+            elif self.sock_path.exists():
                 try:
                     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                     s.connect(str(self.sock_path))

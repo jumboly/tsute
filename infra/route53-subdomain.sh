@@ -28,6 +28,9 @@ if [[ -z "$ZONE_ID" || "$ZONE_ID" == "None" ]]; then
     --query HostedZone.Id --output text)"
 fi
 ZONE_ID="${ZONE_ID#/hostedzone/}"
+# 作成時に付けられないので毎回付け直す（既存のゾーンにも付く。同じ値なら変化しない）。ADR-0009
+aws route53 change-tags-for-resource --resource-type hostedzone --resource-id "$ZONE_ID" \
+  --add-tags Key=app,Value=tsute "Key=env,Value=${ENV_NAME}"
 
 CHANGES=()
 if [[ -n "${TSUTE_CERT_ARN:-}" ]]; then

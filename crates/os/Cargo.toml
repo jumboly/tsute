@@ -1,12 +1,14 @@
 [package]
 name = "tsute-os"
-description = "OS 統合（Clipboard / 通知 / ログイン項目）。macOS 実装、Windows は Phase 2"
+description = "OS 統合（Clipboard / 通知 / ログイン項目）。macOS と Windows の実装"
 edition.workspace = true
 version.workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"
+# Windows の CF_DIB と PNG の相互変換に使う（純 Rust なので macOS 上でも変換ロジックを単体テストできる）
+png = "0.18"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -20,6 +22,21 @@ objc2-core-media = "0.3"
 objc2-core-foundation = "0.3"
 objc2-core-graphics = "0.3"
 block2 = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_System_Registry",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+  "Data_Xml_Dom",
+  "Foundation",
+  "UI_Notifications",
+] }
 
 [dev-dependencies]
 tempfile = "3"

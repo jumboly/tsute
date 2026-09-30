@@ -18,7 +18,8 @@
       "app"
     ],
     "icon": [
-      "icons/icon.png"
+      "icons/icon.png",
+      "icons/icon.ico"
     ],
     "category": "Utility",
     "macOS": {

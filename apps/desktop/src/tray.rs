@@ -12,6 +12,7 @@ use crate::state::AppState;
 
 const TRAY_ID: &str = "main";
 
+#[cfg(not(windows))]
 fn icon(online: bool, unread: bool) -> tauri::image::Image<'static> {
     // 未確認の受信を最優先で示す（ad-hoc 署名では OS 通知が使えないため、その代替。ADR-0014）
     let bytes: &'static [u8] = if unread {
@@ -24,15 +25,46 @@ fn icon(online: bool, unread: bool) -> tauri::image::Image<'static> {
     tauri::image::Image::from_bytes(bytes).expect("tray icon")
 }
 
+/// Windows の通知領域はテンプレート画像（OS による自動着色）がないため、タスクバーの明暗に合わせて黒/白を選ぶ
+#[cfg(windows)]
+fn icon(online: bool, unread: bool) -> tauri::image::Image<'static> {
+    let light = tsute_os::taskbar_is_light();
+    let bytes: &'static [u8] = match (light, unread, online) {
+        (true, true, _) => include_bytes!("../icons/tray-unread.png"),
+        (true, false, true) => include_bytes!("../icons/tray.png"),
+        (true, false, false) => include_bytes!("../icons/tray-offline.png"),
+        (false, true, _) => include_bytes!("../icons/tray-unread-white.png"),
+        (false, false, true) => include_bytes!("../icons/tray-white.png"),
+        (false, false, false) => include_bytes!("../icons/tray-offline-white.png"),
+    };
+    tauri::image::Image::from_bytes(bytes).expect("tray icon")
+}
+
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let st = app.state::<AppState>();
     let mut b = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon(false, false))
         .icon_as_template(true)
         .menu(&build_menu(app)?)
-        .show_menu_on_left_click(true)
+        // macOS は左クリックでメニュー。Windows は左クリックでウィンドウ、右クリックでメニューが慣習
+        .show_menu_on_left_click(cfg!(not(windows)))
         .on_menu_event(on_menu);
+    #[cfg(windows)]
+    {
+        use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+        b = b.on_tray_icon_event(|tray, ev| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = ev
+            {
+                crate::show_window(tray.app_handle(), None);
+            }
+        });
+    }
     // 複数プロファイル同時起動時に区別できるよう、default 以外はアイコン横にプロファイル名を出す
+    // （Windows の通知領域には文字を出せないので、ツールチップのプロファイル名で区別する）
     if st.args.profile != "default" {
         b = b.title(st.args.profile.clone());
     }
@@ -107,7 +139,11 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let login_item = CheckMenuItem::with_id(
         app,
         "login_item",
-        "ログイン時に起動",
+        if cfg!(windows) {
+            "Windows の起動時に開始"
+        } else {
+            "ログイン時に起動"
+        },
         login != "unavailable",
         login == "enabled",
         None::<&str>,

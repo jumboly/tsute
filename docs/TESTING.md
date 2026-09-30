@@ -3,7 +3,7 @@
 ## 前提
 
 - Rust stable（1.95+）、macOS 13+（開発機は macOS 27.0 / arm64 で確認）
-- Tauri CLI: `cargo install tauri-cli --version "^2" --locked`
+- Tauri CLI: `cargo install tauri-cli --version "=2.12.0" --locked`（CI と同じ版。CI は `desktop.yml` の `TAURI_CLI_VERSION`）
 - Lambda ビルド: `uv tool install cargo-lambda`（zig 同梱。`infra/deploy.sh` が自動で PATH に追加）
 - AWS CLI v2（デプロイ・管理操作時のみ）
 
@@ -17,6 +17,9 @@ cargo test --workspace
   presigned URL / ファイル I/O で 2 Endpoint 間を検証。送信側・受信側の kill→再起動、改ざん検出、
   Object Storage 一時障害、WebSocket 強制切断→再接続、既定 8MiB チャンク。
 - `crates/os/tests/media_macos.rs`: 動画メタデータ・サムネイル（AVFoundation）。
+- `crates/server-core/tests/namespace_rules.rs`: Namespace 境界（ADR-0017）。Key による所属の決定と申告の無視、
+  一覧・me の絞り込み、別 Namespace 宛の転送拒否（未登録と同じ応答）、別 Namespace からの Transfer 操作拒否、
+  presence / endpoints_changed / transfer_created が別 Namespace に届かないこと。
 
 ## 2. 実 OS Clipboard テスト（ユーザーの Clipboard を上書きするため明示実行）
 
@@ -27,12 +30,36 @@ cargo test -p tsute-os --test clipboard_macos -- --ignored --test-threads=1
 Text（pbcopy）/ PNG / TIFF のみ（PNG 正規化）/ 動画 file URL / 動画実データ / 複数ファイル。
 実行前のテキストを退避・復元する。
 
+Windows（ADR-0016）:
+
+```powershell
+cargo test -p tsute-os --test clipboard_windows -- --ignored --test-threads=1
+```
+
+Text（PowerShell の Set-Clipboard / Get-Clipboard, CRLF⇔LF）/ PNG 書き込み→読み取り（"PNG" と CF_DIB）/
+CF_DIB のみ（PNG 変換）/ 複数ファイル・動画ファイル（CF_HDROP, WinForms から見えること）。
+CI の `windows` ジョブでは毎回実行する（ランナーは使い捨てのため）。DIB ⇔ PNG 変換の単体テスト
+（`crates/os/src/dib.rs`）は macOS でも `cargo test -p tsute-os` で動く。
+
+### Windows のビルド（Phase 2）
+
+- CI: `.github/workflows/ci.yml` の `windows`（clippy / テスト / 実 Clipboard / 資格情報マネージャー）と
+  `.github/workflows/desktop.yml` の `windows`（`tsute.exe` を入れたフォルダを artifact `Tsute-windows` に保存。
+  インストーラーなし・フォルダコピーで使う。ADR-0016）。
+- 手元の Windows: Rust（MSVC）と Visual Studio Build Tools（C++）が必要。`cd apps/desktop && cargo tauri build --no-bundle`
+  → `target/release/tsute.exe`（素の `cargo build` では画面が埋め込まれないので Tauri CLI を使う）。
+- 手元の Windows での E2E（ADR-0016）: `cargo build -p tsute-desktop` のあと `python e2e/run_e2e.py --target local`。
+  社内プロキシ環境では `NO_PROXY` に `127.0.0.1` を足す（Python の urllib は `127.0.0.0/8` のような CIDR を解釈しない）。
+  実 Clipboard を上書きする（テキストは終了時に復元）。社内 PC ではウイルス対策ソフトの挙動監視に止められたことがある。
+- macOS からのクロスビルドはできない（aws-lc-sys・SQLite が C のため Windows SDK が要る）。
+  `cargo clippy -p tsute-os --target x86_64-pc-windows-msvc` だけは macOS でも通る（純 Rust のため）。
+
 ## 3. デスクトップ E2E（同一 Mac で 2 Endpoint）
 
 ```sh
 cargo build -p tsute-desktop
 python3 e2e/run_e2e.py --target local                  # ローカル開発サーバー
-python3 e2e/run_e2e.py --target cloud --env test       # デプロイ済み AWS（infra/.build/test.json を使用）
+python3 e2e/run_e2e.py --target cloud --env test       # デプロイ済み AWS（infra/.build/test.json を使用。Endpoint は e2e Namespace に登録）
 python3 e2e/run_e2e.py --binary target/release/bundle/macos/Tsute.app/Contents/MacOS/tsute   # .app で実行
 ```
 
@@ -46,11 +73,15 @@ Text（inline / 64KiB 超）、Image、Video（file URL / 実データ）、複�
 ```sh
 cargo run -p tsute-server-local --bin tsute-devserver -- --data-dir target/devserver   # 別ターミナル
 curl -s -X POST -H "x-admin-token: $(cat target/devserver/admin-token)" http://127.0.0.1:8787/admin/enrollment-keys
+# 別の Namespace に登録する Key（本文を省略すると default）
+curl -s -X POST -H "x-admin-token: $(cat target/devserver/admin-token)" -d '{"namespace":"team-a"}' http://127.0.0.1:8787/admin/enrollment-keys
 target/debug/tsute --profile test-a --show
 target/debug/tsute --profile test-b --show
 ```
 
-AWS の場合は `scripts/admin.sh <env> issue-key` で Enrollment Key を発行する。
+AWS の場合は `scripts/admin.sh <env> issue-key <namespace>` で Enrollment Key を発行する（Namespace は必須。
+同じ Namespace の Endpoint 同士だけが送受信できる。既存の Endpoint は `default`。ADR-0017）。
+一覧は `scripts/admin.sh <env> list [namespace]`。
 
 ## 5. .app バンドル
 
@@ -66,7 +97,7 @@ OS 通知とログイン項目（SMAppService）は .app として起動した�
 ドメイン名はリポジトリに書かず、`infra/env/<env>.env`（gitignore 済み）にだけ置く。
 
 ```sh
-infra/request-cert.sh <fqdn>                 # us-east-1 に ACM 証明書を要求
+infra/request-cert.sh <fqdn> <env>           # us-east-1 に ACM 証明書を要求（コスト配分タグ付き）
 # infra/env/<env>.env に TSUTE_APP_DOMAIN と TSUTE_CERT_ARN を設定
 infra/route53-subdomain.sh <env>             # 親ゾーンが CNAME 検証を拒否する場合: Route 53 に委任（NS を表示）
 # ユーザーが親ゾーンに NS（または検証用 CNAME + CNAME）を追加 → 証明書が ISSUED になるのを待つ

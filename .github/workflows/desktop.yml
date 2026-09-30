@@ -3,7 +3,10 @@ name: Desktop build
 on:
   push:
     branches: [main]
-    paths: ["apps/**", "crates/**", "Cargo.lock", ".github/workflows/desktop.yml"]
+    paths: ["apps/**", "crates/**", "build-support/**", "scripts/check-windows-exe.ps1", "Cargo.lock", ".github/workflows/desktop.yml"]
+  # パッケージングの失敗（アイコン・バンドル設定など）をマージ前に見つけるため PR でも作る
+  pull_request:
+    paths: ["apps/**", "crates/**", "build-support/**", "scripts/check-windows-exe.ps1", "Cargo.lock", ".github/workflows/desktop.yml"]
   workflow_dispatch:
     inputs:
       environment:
@@ -13,6 +16,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  TAURI_CLI_VERSION: 2.12.0
 
 jobs:
   macos:
@@ -25,7 +31,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo install tauri-cli --version "^2" --locked
+      # tauri-cli はソース（crates.io, --locked）からビルドする（第三者のビルド済みバイナリを使わないため）。
+      # ビルドに 7〜10 分かかるので、できたバイナリを版ごとにキャッシュする。版を上げるときは env の値だけ変える
+      - uses: actions/cache@v4
+        id: tauri-cli
+        with:
+          path: ~/.cargo/bin/cargo-tauri${{ runner.os == 'Windows' && '.exe' || '' }}
+          key: tauri-cli-${{ env.TAURI_CLI_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "=${{ env.TAURI_CLI_VERSION }}" --locked
       - run: cd apps/desktop && cargo tauri build --bundles app
       # 現状は ad-hoc 署名（Developer ID 未設定）。配布時は署名・公証を追加する（docs/PROGRESS.md 参照）
       - run: cd target/release/bundle/macos && ditto -c -k --keepParent Tsute.app Tsute-macos.zip
@@ -33,3 +47,39 @@ jobs:
         with:
           name: Tsute-macos
           path: target/release/bundle/macos/Tsute-macos.zip
+
+  windows:
+    runs-on: windows-latest
+    environment: ${{ inputs.environment || 'test' }}
+    env:
+      TSUTE_DEFAULT_BASE_URL: ${{ vars.APP_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # tauri-cli はソース（crates.io, --locked）からビルドする（第三者のビルド済みバイナリを使わないため）。
+      # ビルドに 7〜10 分かかるので、できたバイナリを版ごとにキャッシュする。版を上げるときは env の値だけ変える
+      - uses: actions/cache@v4
+        id: tauri-cli
+        with:
+          path: ~/.cargo/bin/cargo-tauri${{ runner.os == 'Windows' && '.exe' || '' }}
+          key: tauri-cli-${{ env.TAURI_CLI_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "=${{ env.TAURI_CLI_VERSION }}" --locked
+      # インストーラーは作らず、フォルダごとコピーして使う形にする（画面は exe に埋め込まれ、データ・資格情報・
+      # レジストリはアプリが初回起動時に自分で作るため、インストーラーでしかできない作業がない）
+      - run: cargo tauri build --no-bundle
+        working-directory: apps/desktop
+      # フォルダコピーで動くことの確認: VC++ ランタイム（vcruntime140.dll 等）に依存せず、同梱すべき DLL もないこと
+      - name: Check the exe runs without extra DLLs
+        shell: pwsh
+        run: |
+          ./scripts/check-windows-exe.ps1 target/release/tsute.exe
+          New-Item -ItemType Directory -Force Tsute-windows | Out-Null
+          Copy-Item target/release/tsute.exe Tsute-windows/tsute.exe
+          Get-ChildItem Tsute-windows
+      # 現状はコード署名なし（SmartScreen の警告が出る）。配布時は署名を追加する（docs/PROGRESS.md 参照）
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tsute-windows
+          path: Tsute-windows/

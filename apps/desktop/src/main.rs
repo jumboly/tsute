@@ -1,9 +1,12 @@
-//! つて デスクトップアプリ（メニューバー常駐）
+//! つて デスクトップアプリ（macOS: メニューバー / Windows: 通知領域に常駐）
 //!
 //! 起動: `tsute [--profile NAME] [--show] [--insecure-file-credentials] [--data-dir DIR]`
-//! - 常にウィンドウなしで起動し、メニューバーに常駐する（ログイン時の自動起動でもウィンドウを出さないため）。
+//! - 常にウィンドウなしで起動し、メニューバー（通知領域）に常駐する（ログイン時の自動起動でもウィンドウを出さないため）。
 //!   未登録のとき、または `--show` のときだけウィンドウを開く。
 //! - ウィンドウの Close は WebView の破棄であり終了ではない。終了はメニューの「つて を終了」。
+
+// Windows のリリースビルドでは GUI アプリとしてリンクし、起動時にコンソールウィンドウを出さない
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod automation;
 mod commands;
@@ -20,12 +23,26 @@ use tsute_proto::TransferKind;
 
 use crate::state::{AppState, Args};
 
+#[cfg(not(windows))]
 fn default_app_dir() -> PathBuf {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     home.join("Library/Application Support/dev.tsute.desktop")
 }
+
+/// %LOCALAPPDATA%（Roaming ではない）。移動プロファイルで他の PC に設定・DB・転送中データが複製されると、
+/// 同じ Endpoint が 2 台で動いてしまうため
+#[cfg(windows)]
+fn default_app_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("dev.tsute.desktop")
+}
+
+/// ウィンドウの最小サイズ（論理ピクセル）。履歴を折りたたんでいる間は高さだけこれより低くする
+pub const WINDOW_MIN_SIZE: (f64, f64) = (360.0, 420.0);
 
 pub fn show_window(app: &AppHandle, view: Option<&str>) {
     // ウィンドウを開いた = 受信を確認したとみなし、メニューバーの印を消す
@@ -60,8 +77,8 @@ pub fn show_window(app: &AppHandle, view: Option<&str>) {
     };
     match WebviewWindowBuilder::new(app, "main", WebviewUrl::App(url.into()))
         .title(title)
-        .inner_size(440.0, 680.0)
-        .min_inner_size(380.0, 480.0)
+        .inner_size(400.0, 580.0)
+        .min_inner_size(WINDOW_MIN_SIZE.0, WINDOW_MIN_SIZE.1)
         .build()
     {
         Ok(w) => {
@@ -239,6 +256,12 @@ fn main() {
         }
     };
     init_logging(&profile.root);
+    // 不具合の報告時にログだけで版を特定できるように
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        commit = env!("TSUTE_GIT_COMMIT"),
+        "starting"
+    );
 
     // 同一プロファイルの二重起動は WebSocket・ダウンロードが競合するので拒否する
     let lock = std::fs::OpenOptions::new()
@@ -264,7 +287,14 @@ fn main() {
                 service: "dev.tsute.desktop".into(),
             })
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(windows)]
+        {
+            Arc::new(tsute_client_core::secrets::WindowsCredentialStore {
+                service: "dev.tsute.desktop".into(),
+            })
+        }
+        // 対象外の OS（ビルド確認用）だけの開発用フォールバック。macOS / Windows の既定には使わない（ADR-0011）
+        #[cfg(not(any(target_os = "macos", windows)))]
         {
             Arc::new(FileSecretStore {
                 dir: profile.root.join("insecure-secrets"),
@@ -302,6 +332,7 @@ fn main() {
             commands::save_as,
             commands::cancel_transfer,
             commands::set_login_item,
+            commands::set_window_height,
             commands::rename_endpoint,
             commands::choose_download_dir,
             commands::forget_enrollment,

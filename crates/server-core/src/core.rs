@@ -14,8 +14,12 @@ use tsute_proto::*;
 use crate::traits::*;
 
 pub const ENROLLMENT_KEY_PREFIX: &str = "tsute-ek-";
+/// ビルドしたコミット（短いハッシュ。build.rs が埋め込む）
+pub const BUILD_COMMIT: &str = env!("TSUTE_GIT_COMMIT");
 const TOKEN_PREFIX: &str = "tsute-at-";
 const WS_TICKET_PREFIX: &str = "tsute-wt-";
+/// Namespace 導入前に登録された Endpoint が属する Namespace
+pub const DEFAULT_NAMESPACE: &str = "default";
 /// 1 Endpoint が持てる Push Subscription の上限（同じ Browser の再購読で増え続けないように）
 const MAX_PUSH_SUBSCRIPTIONS_PER_ENDPOINT: usize = 5;
 
@@ -209,6 +213,34 @@ pub struct WsAccepted {
     pub subprotocol: Option<&'static str>,
 }
 
+/// Namespace 名の検証。管理者が入力する値で、ログや管理出力にそのまま出るため、紛らわしい文字を含めない
+pub fn validate_namespace(ns: &str) -> std::result::Result<(), String> {
+    let ok = !ns.is_empty()
+        && ns.len() <= 64
+        && ns
+            .bytes()
+            .next()
+            .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && ns
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_');
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "invalid namespace {ns:?}: use 1..64 chars of [a-z0-9_-], starting with [a-z0-9]"
+        ))
+    }
+}
+
+/// 管理経路の Endpoint 一覧の 1 件。管理者は全 Namespace を見るため、所属を併記する
+#[derive(Debug, Clone, Serialize)]
+pub struct AdminEndpointInfo {
+    pub namespace: String,
+    #[serde(flatten)]
+    pub endpoint: EndpointInfo,
+}
+
 fn validate_endpoint_name(name: &str) -> ApiResult<String> {
     let n = name.trim();
     if n.is_empty() || n.chars().count() > 64 || n.chars().any(|c| c.is_control()) {
@@ -252,14 +284,20 @@ impl<S, B, N, P> Core<S, B, N, P> {
 impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
     // ---------- 管理操作（IAM で保護された経路からのみ呼ぶ） ----------
 
-    pub async fn issue_enrollment_key(&self) -> Result<(String, i64)> {
+    /// 発行した Key で登録した Endpoint は `namespace` に属する（クライアントは Namespace を指定できない）
+    pub async fn issue_enrollment_key(&self, namespace: &str) -> Result<(String, i64)> {
+        validate_namespace(namespace)?;
         let key = random_token(ENROLLMENT_KEY_PREFIX, 20);
         let exp = now() + self.cfg.enrollment_key_ttl_secs;
-        self.store.put_enrollment_key(&secret_hash(&key), exp).await?;
+        self.store
+            .put_enrollment_key(&secret_hash(&key), namespace, exp)
+            .await?;
         Ok((key, exp))
     }
 
     pub async fn revoke_endpoint(&self, endpoint_id: &str) -> Result<()> {
+        // 通知先を決めるため削除前に所属を引く。既に無い ID でも、残った転送の後始末は従来どおり行う
+        let namespace = self.store.get_endpoint(endpoint_id).await?.map(|e| e.namespace);
         self.store.delete_endpoint(endpoint_id).await?;
         self.store.delete_tokens_of(endpoint_id).await?;
         // 失効した Endpoint へ Push し続けないよう購読も消す
@@ -283,12 +321,20 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
                 self.blob.delete_prefix(&blob_prefix(&t.transfer_id)).await?;
             }
         }
-        self.broadcast(None, &ServerEvent::EndpointsChanged).await;
+        if let Some(ns) = namespace {
+            self.broadcast(&ns, None, &ServerEvent::EndpointsChanged).await;
+        }
         Ok(())
     }
 
-    pub async fn list_endpoints_admin(&self) -> Result<Vec<EndpointInfo>> {
-        self.endpoint_infos().await
+    /// `namespace` が None なら全 Namespace
+    pub async fn list_endpoints_admin(&self, namespace: Option<&str>) -> Result<Vec<AdminEndpointInfo>> {
+        Ok(self
+            .endpoint_infos(namespace)
+            .await?
+            .into_iter()
+            .map(|(namespace, endpoint)| AdminEndpointInfo { namespace, endpoint })
+            .collect())
     }
 
     // ---------- HTTP ----------
@@ -318,60 +364,69 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
         match (m, seg.as_slice()) {
             ("GET", ["api", "health"]) => Ok(Response::json(
                 200,
-                &serde_json::json!({"ok": true, "protocol_version": PROTOCOL_VERSION}),
+                // commit はデプロイ済みの版の確認用（公開されても困らない短いハッシュだけ）
+                &serde_json::json!({"ok": true, "protocol_version": PROTOCOL_VERSION, "commit": BUILD_COMMIT}),
             )),
             ("POST", ["api", "enroll"]) => self.enroll(parse(&req.body)?).await,
             ("POST", ["api", "auth", "challenge"]) => self.challenge(parse(&req.body)?).await,
             ("POST", ["api", "auth", "token"]) => self.token(parse(&req.body)?).await,
             _ => {
-                let me = self.authenticate(&req.headers).await?;
+                let ep = self.authenticate(&req.headers).await?;
+                let (me, ns) = (ep.endpoint_id.as_str(), ep.namespace.as_str());
                 match (m, seg.as_slice()) {
-                    ("GET", ["api", "me"]) => self.me(&me).await,
-                    ("PUT", ["api", "me", "name"]) => self.rename(&me, parse(&req.body)?).await,
-                    ("PUT", ["api", "me", "capabilities"]) => self.set_capabilities(&me, parse(&req.body)?).await,
-                    ("POST", ["api", "ws-ticket"]) => self.ws_ticket(&me).await,
+                    ("GET", ["api", "me"]) => self.me(me, ns).await,
+                    ("PUT", ["api", "me", "name"]) => self.rename(me, ns, parse(&req.body)?).await,
+                    ("PUT", ["api", "me", "capabilities"]) => self.set_capabilities(me, ns, parse(&req.body)?).await,
+                    ("POST", ["api", "ws-ticket"]) => self.ws_ticket(me).await,
                     ("GET", ["api", "push", "config"]) => Ok(Response::json(
                         200,
                         &PushConfig {
                             vapid_public_key: self.pusher.vapid_public_key(),
                         },
                     )),
-                    ("PUT", ["api", "push", "subscription"]) => self.put_push(&me, parse(&req.body)?).await,
-                    ("DELETE", ["api", "push", "subscription"]) => self.delete_push(&me, parse(&req.body)?).await,
+                    ("PUT", ["api", "push", "subscription"]) => self.put_push(me, ns, parse(&req.body)?).await,
+                    ("DELETE", ["api", "push", "subscription"]) => self.delete_push(me, ns, parse(&req.body)?).await,
+                    // 別 Namespace の Endpoint は存在自体を見せない
                     ("GET", ["api", "endpoints"]) => Ok(Response::json(
                         200,
                         &EndpointList {
-                            endpoints: self.endpoint_infos().await?,
+                            endpoints: self
+                                .endpoint_infos(Some(ns))
+                                .await?
+                                .into_iter()
+                                .map(|(_, e)| e)
+                                .collect(),
                         },
                     )),
-                    ("POST", ["api", "transfers"]) => self.create_transfer(&me, parse(&req.body)?).await,
-                    ("GET", ["api", "transfers"]) => self.list_transfers(&me).await,
+                    ("POST", ["api", "transfers"]) => self.create_transfer(me, ns, parse(&req.body)?).await,
+                    ("GET", ["api", "transfers"]) => self.list_transfers(me).await,
                     ("GET", ["api", "transfers", id]) => {
-                        let (t, chunks) = self.load_for(&me, id).await?;
+                        let (t, chunks) = self.load_for(me, id).await?;
                         Ok(Response::json(200, &TransferDetail { transfer: t, chunks }))
                     }
-                    ("DELETE", ["api", "transfers", id]) => self.cancel(&me, id).await,
+                    ("DELETE", ["api", "transfers", id]) => self.cancel(me, id).await,
                     ("POST", ["api", "transfers", id, "upload-urls"]) => {
-                        self.upload_urls(&me, id, parse(&req.body)?).await
+                        self.upload_urls(me, id, parse(&req.body)?).await
                     }
                     ("POST", ["api", "transfers", id, "chunks"]) => {
-                        self.chunks_complete(&me, id, parse(&req.body)?).await
+                        self.chunks_complete(me, id, parse(&req.body)?).await
                     }
                     ("POST", ["api", "transfers", id, "files", file, "finalize"]) => {
                         let file: u32 = file.parse().map_err(|_| ApiErr::bad("file index"))?;
-                        self.finalize_file(&me, id, file, parse(&req.body)?).await
+                        self.finalize_file(me, id, file, parse(&req.body)?).await
                     }
                     ("POST", ["api", "transfers", id, "download-urls"]) => {
-                        self.download_urls(&me, id, parse(&req.body)?).await
+                        self.download_urls(me, id, parse(&req.body)?).await
                     }
-                    ("POST", ["api", "transfers", id, "received"]) => self.received(&me, id).await,
+                    ("POST", ["api", "transfers", id, "received"]) => self.received(me, id).await,
                     _ => Err(ApiErr::not_found()),
                 }
             }
         }
     }
 
-    async fn authenticate(&self, headers: &HashMap<String, String>) -> ApiResult<String> {
+    /// 認証した Endpoint のレコード。Namespace 境界の判定に使うため ID だけでなく所属も返す
+    async fn authenticate(&self, headers: &HashMap<String, String>) -> ApiResult<EndpointRecord> {
         let token = headers
             .get("authorization")
             .and_then(|v| v.strip_prefix("Bearer "))
@@ -385,10 +440,7 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
             .await?
             .ok_or_else(ApiErr::unauthorized)?;
         // 失効（revoke）された Endpoint のトークンは即座に無効にする
-        if self.store.get_endpoint(&ep).await?.is_none() {
-            return Err(ApiErr::unauthorized());
-        }
-        Ok(ep)
+        self.store.get_endpoint(&ep).await?.ok_or_else(ApiErr::unauthorized)
     }
 
     async fn enroll(&self, r: EnrollRequest) -> ApiResult<Response> {
@@ -398,31 +450,36 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
             .map_err(|_| ApiErr::bad("public_key encoding"))?;
         let pk: [u8; 32] = pk.try_into().map_err(|_| ApiErr::bad("public_key length"))?;
         VerifyingKey::from_bytes(&pk).map_err(|_| ApiErr::bad("public_key invalid"))?;
-        if !r.enrollment_key.starts_with(ENROLLMENT_KEY_PREFIX)
-            || !self
-                .store
+        let namespace = if r.enrollment_key.starts_with(ENROLLMENT_KEY_PREFIX) {
+            self.store
                 .consume_enrollment_key(&secret_hash(&r.enrollment_key), now())
                 .await?
-        {
-            // 鍵の存在有無を区別できる情報は返さない
+        } else {
+            None
+        };
+        // 鍵の存在有無を区別できる情報は返さない
+        let Some(namespace) = namespace else {
             return Err(ApiErr::new(
                 403,
                 "invalid_enrollment_key",
                 "enrollment key is invalid, used, or expired",
             ));
-        }
+        };
         let ep = EndpointRecord {
             endpoint_id: format!("ep_{}", uuid::Uuid::now_v7().simple()),
             name,
             platform: r.platform,
             public_key: r.public_key,
             created_at: now(),
+            // 所属は Key が決める。クライアントの申告は受け付けない
+            namespace,
             client_kind: r.client_kind,
             accepts: r.accepts.map(validate_accepts),
         };
         self.store.put_endpoint(&ep).await?;
-        tracing::info!(endpoint_id = %ep.endpoint_id, "endpoint enrolled");
-        self.broadcast(None, &ServerEvent::EndpointsChanged).await;
+        tracing::info!(endpoint_id = %ep.endpoint_id, namespace = %ep.namespace, "endpoint enrolled");
+        self.broadcast(&ep.namespace, None, &ServerEvent::EndpointsChanged)
+            .await;
         Ok(Response::json(
             200,
             &EnrollResponse {
@@ -476,7 +533,8 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
         ))
     }
 
-    async fn endpoint_infos(&self) -> Result<Vec<EndpointInfo>> {
+    /// (所属 Namespace, 情報)。`namespace` が Some ならその Namespace の Endpoint だけ
+    async fn endpoint_infos(&self, namespace: Option<&str>) -> Result<Vec<(String, EndpointInfo)>> {
         let conns = self.store.list_connections(now()).await?;
         let subs = if self.pusher.vapid_public_key().is_some() {
             self.store.list_push_subscriptions(now()).await?
@@ -484,7 +542,13 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
             // Push を送れない環境では購読があっても到達手段にならない
             vec![]
         };
-        let mut eps = self.store.list_endpoints().await?;
+        let mut eps: Vec<EndpointRecord> = self
+            .store
+            .list_endpoints()
+            .await?
+            .into_iter()
+            .filter(|e| namespace.is_none_or(|ns| e.namespace == ns))
+            .collect();
         eps.sort_by_key(|e| e.created_at);
         Ok(eps
             .iter()
@@ -496,17 +560,17 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
                 if subs.iter().any(|s| s.endpoint_id == e.endpoint_id) {
                     reach.push(Reach::WebPush);
                 }
-                e.info(reach)
+                (e.namespace.clone(), e.info(reach))
             })
             .collect())
     }
 
-    async fn set_capabilities(&self, me: &str, r: CapabilitiesRequest) -> ApiResult<Response> {
+    async fn set_capabilities(&self, me: &str, ns: &str, r: CapabilitiesRequest) -> ApiResult<Response> {
         let mut ep = self.store.get_endpoint(me).await?.ok_or_else(ApiErr::unauthorized)?;
         ep.accepts = Some(validate_accepts(r.accepts));
         self.store.put_endpoint(&ep).await?;
-        self.broadcast(None, &ServerEvent::EndpointsChanged).await;
-        self.me(me).await
+        self.broadcast(ns, None, &ServerEvent::EndpointsChanged).await;
+        self.me(me, ns).await
     }
 
     async fn ws_ticket(&self, me: &str) -> ApiResult<Response> {
@@ -522,7 +586,7 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
         ))
     }
 
-    async fn put_push(&self, me: &str, r: PushSubscriptionRequest) -> ApiResult<Response> {
+    async fn put_push(&self, me: &str, ns: &str, r: PushSubscriptionRequest) -> ApiResult<Response> {
         if self.pusher.vapid_public_key().is_none() {
             return Err(ApiErr::new(404, "push_disabled", "web push is not configured"));
         }
@@ -552,23 +616,24 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
                 expires_at: now() + self.cfg.push_subscription_ttl_secs,
             })
             .await?;
-        self.broadcast(None, &ServerEvent::EndpointsChanged).await;
+        self.broadcast(ns, None, &ServerEvent::EndpointsChanged).await;
         Ok(Response::json(200, &serde_json::json!({"ok": true})))
     }
 
-    async fn delete_push(&self, me: &str, r: PushSubscriptionRequest) -> ApiResult<Response> {
+    async fn delete_push(&self, me: &str, ns: &str, r: PushSubscriptionRequest) -> ApiResult<Response> {
         // キーに自分の endpoint_id を含むため、他 Endpoint の購読は消せない
         self.store
             .delete_push_subscription(me, &secret_hash(&r.endpoint))
             .await?;
-        self.broadcast(None, &ServerEvent::EndpointsChanged).await;
+        self.broadcast(ns, None, &ServerEvent::EndpointsChanged).await;
         Ok(Response::json(200, &serde_json::json!({"ok": true})))
     }
 
-    async fn me(&self, me: &str) -> ApiResult<Response> {
-        let infos = self.endpoint_infos().await?;
+    async fn me(&self, me: &str, ns: &str) -> ApiResult<Response> {
+        let infos = self.endpoint_infos(Some(ns)).await?;
         let endpoint = infos
             .into_iter()
+            .map(|(_, e)| e)
             .find(|e| e.endpoint_id == me)
             .ok_or_else(ApiErr::unauthorized)?;
         Ok(Response::json(
@@ -580,23 +645,26 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
         ))
     }
 
-    async fn rename(&self, me: &str, r: RenameRequest) -> ApiResult<Response> {
+    async fn rename(&self, me: &str, ns: &str, r: RenameRequest) -> ApiResult<Response> {
         let name = validate_endpoint_name(&r.name)?;
         let mut ep = self.store.get_endpoint(me).await?.ok_or_else(ApiErr::unauthorized)?;
         ep.name = name;
         self.store.put_endpoint(&ep).await?;
-        self.broadcast(None, &ServerEvent::EndpointsChanged).await;
-        self.me(me).await
+        self.broadcast(ns, None, &ServerEvent::EndpointsChanged).await;
+        self.me(me, ns).await
     }
 
-    async fn create_transfer(&self, me: &str, r: CreateTransferRequest) -> ApiResult<Response> {
+    async fn create_transfer(&self, me: &str, ns: &str, r: CreateTransferRequest) -> ApiResult<Response> {
         if r.receiver == me {
             return Err(ApiErr::bad("cannot send to self"));
         }
+        // 別 Namespace の Endpoint は未登録と同じ応答にし、ID を直接指定されても送れず存在も判別できないようにする。
+        // 送受信者が同じ Namespace の Transfer しか作られないため、以後の Transfer 操作（当事者のみ可）も境界内に収まる
         let receiver = self
             .store
             .get_endpoint(&r.receiver)
             .await?
+            .filter(|e| e.namespace == ns)
             .ok_or_else(|| ApiErr::bad("unknown receiver"))?;
         // UI を迂回した呼び出しでも、受信側が扱えない Payload は作らない（ADR-0015 の多層防御）
         if !receiver.accepts().contains(&r.kind) {
@@ -913,7 +981,7 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
 
     /// Browser 用: `Sec-WebSocket-Protocol: tsute.v1, ticket.<ticket>` の ticket を一回限りで消費する。
     /// URL クエリにしないのは CloudFront / API Gateway のアクセスログに残りうるため。
-    async fn authenticate_ticket(&self, headers: &HashMap<String, String>) -> ApiResult<String> {
+    async fn authenticate_ticket(&self, headers: &HashMap<String, String>) -> ApiResult<EndpointRecord> {
         let protos: Vec<&str> = headers
             .get("sec-websocket-protocol")
             .map(|v| v.split(',').map(str::trim).collect())
@@ -931,10 +999,7 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
             .consume_ws_ticket(&secret_hash(ticket), now())
             .await?
             .ok_or_else(ApiErr::unauthorized)?;
-        if self.store.get_endpoint(&ep).await?.is_none() {
-            return Err(ApiErr::unauthorized());
-        }
-        Ok(ep)
+        self.store.get_endpoint(&ep).await?.ok_or_else(ApiErr::unauthorized)
     }
 
     /// $connect。Err を返すと接続を拒否する。
@@ -952,22 +1017,23 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
         self.store
             .put_connection(&ConnectionRecord {
                 connection_id: connection_id.into(),
-                endpoint_id: ep.clone(),
+                endpoint_id: ep.endpoint_id.clone(),
                 connected_at: now(),
                 expires_at: now() + self.cfg.connection_ttl_secs,
             })
             .await?;
-        tracing::info!(endpoint_id = %ep, "ws connected");
+        tracing::info!(endpoint_id = %ep.endpoint_id, "ws connected");
         self.broadcast(
+            &ep.namespace,
             Some(connection_id),
             &ServerEvent::Presence {
-                endpoint_id: ep.clone(),
+                endpoint_id: ep.endpoint_id.clone(),
                 online: true,
             },
         )
         .await;
         Ok(WsAccepted {
-            endpoint_id: ep,
+            endpoint_id: ep.endpoint_id,
             subprotocol,
         })
     }
@@ -980,8 +1046,10 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
                 .await?
                 .iter()
                 .any(|c| c.endpoint_id == ep);
-            if !still_online {
+            // 失効済みで所属が引けない Endpoint は、失効時に EndpointsChanged を通知済みなので送らない
+            if !still_online && let Some(rec) = self.store.get_endpoint(&ep).await? {
                 self.broadcast(
+                    &rec.namespace,
                     None,
                     &ServerEvent::Presence {
                         endpoint_id: ep,
@@ -1078,11 +1146,23 @@ impl<S: Store, B: BlobStore, N: Notifier, P: Pusher> Core<S, B, N, P> {
         }
     }
 
-    async fn broadcast(&self, except: Option<&str>, ev: &ServerEvent) {
-        let Ok(conns) = self.store.list_connections(now()).await else {
+    /// `namespace` の Endpoint の接続にだけ送る（Presence 等で別 Namespace の Endpoint ID を漏らさないため）
+    async fn broadcast(&self, namespace: &str, except: Option<&str>, ev: &ServerEvent) {
+        let (Ok(conns), Ok(eps)) = (
+            self.store.list_connections(now()).await,
+            self.store.list_endpoints().await,
+        ) else {
             return;
         };
-        for c in conns.iter().filter(|c| Some(c.connection_id.as_str()) != except) {
+        let members: std::collections::HashSet<&str> = eps
+            .iter()
+            .filter(|e| e.namespace == namespace)
+            .map(|e| e.endpoint_id.as_str())
+            .collect();
+        for c in conns
+            .iter()
+            .filter(|c| Some(c.connection_id.as_str()) != except && members.contains(c.endpoint_id.as_str()))
+        {
             self.send_or_prune(c, ev).await;
         }
     }

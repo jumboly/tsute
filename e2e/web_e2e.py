@@ -12,6 +12,7 @@ Browser の Clipboard はコンテキストごとに独立で、ユーザーの 
 スマホ実機・OS の音声入力・Web Push の表示・Share Sheet は自動化できないため手動確認項目（docs/TESTING.md）。
 """
 import argparse
+import re
 import json
 import sys
 import tempfile
@@ -379,6 +380,10 @@ def run(pw, engine, server, headed):
         a.page.click("#open-settings")
         expect(a.page.locator("#push-status")).not_to_be_empty(timeout=10000)
         info["push_status"] = a.page.locator("#push-status").text_content()
+        # 配信中の版（deploy-web.sh が書く version.json。開発サーバーは自分の版を返す）
+        expect(a.page.locator("#set-version")).to_have_text(re.compile(r"^(開発版|\d+\.\d+\.\d+ \([0-9a-f]{7}(-dirty)?\))$"),
+                                                           timeout=10000)
+        info["version"] = a.page.locator("#set-version").text_content()
         a.page.click("#close-settings")
         return info
 

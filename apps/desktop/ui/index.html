@@ -45,35 +45,38 @@
     <div id="dropzone" class="dropzone" data-testid="dropzone">
       ここにファイルをドロップ<br><span class="muted">ドロップしただけでは送信しません</span>
     </div>
-    <h3>履歴</h3>
+    <button id="history-toggle" class="section-toggle" aria-expanded="true" aria-controls="history" data-testid="history-toggle">
+      <span class="chevron" aria-hidden="true">▾</span> 履歴 <span id="history-new" class="badge" hidden></span>
+    </button>
     <ul id="history" class="history" data-testid="history"></ul>
   </section>
 
   <!-- Clipboard プレビュー / 確認 -->
   <section id="view-clip" class="view" hidden>
     <h2>Clipboard の内容を確認</h2>
-    <div id="clip-tabs" class="tabs" data-testid="clip-tabs"></div>
-    <div id="clip-preview" class="preview" data-testid="clip-preview"></div>
-    <p class="to">送信先: <strong id="clip-target" data-testid="clip-target"></strong></p>
-    <p class="banner warn" id="clip-reject" data-testid="clip-reject" hidden></p>
-    <div class="row">
+    <!-- 内容が長くても送信先とボタンが見えるよう、プレビューより上に置いてスクロール中も貼り付ける -->
+    <div class="send-bar">
+      <p class="to">送信先: <strong id="clip-target" data-testid="clip-target"></strong></p>
       <button id="clip-cancel" data-testid="clip-cancel">キャンセル</button>
       <button id="clip-send" class="primary" data-testid="clip-send">送信</button>
     </div>
+    <p class="banner warn" id="clip-reject" data-testid="clip-reject" hidden></p>
+    <div id="clip-tabs" class="tabs" data-testid="clip-tabs"></div>
+    <div id="clip-preview" class="preview" data-testid="clip-preview"></div>
   </section>
 
   <!-- ファイル確認 -->
   <section id="view-files" class="view" hidden>
     <h2>ファイルを送信しますか？</h2>
-    <p><span id="files-count" data-testid="files-count"></span> ファイル・合計 <strong id="files-total" data-testid="files-total"></strong></p>
-    <ul id="files-list" class="files" data-testid="files-list"></ul>
-    <ul id="files-rejected" class="files rejected"></ul>
-    <p class="to">送信先: <strong id="files-target" data-testid="files-target"></strong></p>
-    <p class="banner warn" id="files-reject" data-testid="files-reject" hidden></p>
-    <div class="row">
+    <div class="send-bar">
+      <p class="to">送信先: <strong id="files-target" data-testid="files-target"></strong></p>
       <button id="files-cancel" data-testid="files-cancel">キャンセル</button>
       <button id="files-send" class="primary" data-testid="files-send">送信</button>
     </div>
+    <p class="banner warn" id="files-reject" data-testid="files-reject" hidden></p>
+    <p><span id="files-count" data-testid="files-count"></span> ファイル・合計 <strong id="files-total" data-testid="files-total"></strong></p>
+    <ul id="files-list" class="files" data-testid="files-list"></ul>
+    <ul id="files-rejected" class="files rejected"></ul>
   </section>
 
   <!-- 設定 -->
@@ -85,7 +88,7 @@
       <dt>接続先</dt><dd id="set-url" class="mono"></dd>
       <dt>資格情報</dt><dd id="set-cred"></dd>
       <dt>受信フォルダ</dt><dd><span id="set-dl" class="mono"></span> <button id="set-dl-change" class="small">変更…</button></dd>
-      <dt>ログイン時に起動</dt><dd><label class="inline"><input type="checkbox" id="set-login" data-testid="set-login"> <span id="set-login-status" class="muted"></span></label></dd>
+      <dt id="set-login-label">ログイン時に起動</dt><dd><label class="inline"><input type="checkbox" id="set-login" data-testid="set-login"> <span id="set-login-status" class="muted"></span></label></dd>
       <dt>バージョン</dt><dd id="set-version"></dd>
     </dl>
     <label>このEndpointの名前<span class="row"><input id="set-name" type="text" maxlength="64"><button id="set-name-save" class="small">保存</button></span></label>
@@ -93,7 +96,7 @@
     <ul id="endpoints" class="endpoints" data-testid="endpoints"></ul>
     <div class="row">
       <button id="settings-back" data-testid="settings-back">戻る</button>
-      <button id="forget" class="danger small">このMacの登録情報を削除</button>
+      <button id="forget" class="danger small">この端末の登録情報を削除</button>
     </div>
   </section>
 

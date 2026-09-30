@@ -52,6 +52,51 @@ function toast(msg, ms = 2600) {
 function show(view) {
   for (const v of document.querySelectorAll(".view")) v.hidden = v.id !== `view-${view}`;
   document.body.dataset.view = view;
+  fitWindow();
+}
+
+// ---------------- 履歴の折りたたみとウィンドウの高さ ----------------
+// 開閉状態と広げていたときの高さはこの WebView だけの表示設定なので localStorage に置く（読めなくても動く）
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* 保存できなくても表示は続ける */ } },
+};
+let historyCollapsed = store.get("tsute.historyCollapsed") === "1";
+let windowFixed = false;
+let newWhileCollapsed = 0;
+
+function setHistoryCollapsed(collapsed) {
+  if (collapsed && !historyCollapsed) store.set("tsute.expandedHeight", String(window.innerHeight));
+  historyCollapsed = collapsed;
+  store.set("tsute.historyCollapsed", collapsed ? "1" : "0");
+  if (!collapsed) newWhileCollapsed = 0;
+  renderHistoryToggle();
+  fitWindow();
+}
+
+function renderHistoryToggle() {
+  $("history-toggle").setAttribute("aria-expanded", String(!historyCollapsed));
+  $("history").hidden = historyCollapsed;
+  const badge = $("history-new");
+  badge.hidden = !newWhileCollapsed;
+  badge.textContent = `新着 ${newWhileCollapsed}`;
+}
+
+// 折りたたみ中のメイン画面ではウィンドウを中身の高さに合わせて固定し、それ以外では広げていたときの高さに戻す
+function fitWindow() {
+  const compact = historyCollapsed && currentView() === "main";
+  if (compact) {
+    const view = $("view-main");
+    const bottom = $("history-toggle").getBoundingClientRect().bottom;
+    const height = Math.ceil(bottom + parseFloat(getComputedStyle(view).paddingBottom));
+    windowFixed = true;
+    invoke("set_window_height", { height, fixed: true }).catch(() => {});
+  } else if (windowFixed) {
+    windowFixed = false;
+    const height = Number(store.get("tsute.expandedHeight")) || 580;
+    invoke("set_window_height", { height, fixed: false }).catch(() => {});
+  }
 }
 
 function currentView() {
@@ -80,7 +125,7 @@ async function refreshState() {
   if (!state.enrolled) {
     show("enroll");
     if (!$("enroll-url").value && state.default_base_url) $("enroll-url").value = state.default_base_url;
-    if (!$("enroll-name").value) $("enroll-name").value = `Mac / ${state.profile}`;
+    if (!$("enroll-name").value) $("enroll-name").value = `${state.platform === "windows" ? "Windows" : "Mac"} / ${state.profile}`;
   }
 }
 
@@ -175,7 +220,7 @@ function renderItem(it) {
     btns.append(el("button", { class: "small primary", "data-testid": "apply", onclick: () => applyClipboard(t.transfer_id) },
       t.kind === "files" || t.kind === "clipboard_video" ? "Clipboard にコピー（ファイル）" : "Clipboard にコピー"));
     if (t.kind !== "files") btns.append(el("button", { class: "small", "data-testid": "save", onclick: () => saveAs(t.transfer_id) }, "保存…"));
-    if (t.files.length && it.files_exist) btns.append(el("button", { class: "small", onclick: () => call("reveal", { transferId: t.transfer_id }) }, "Finder で表示"));
+    if (t.files.length && it.files_exist) btns.append(el("button", { class: "small", onclick: () => call("reveal", { transferId: t.transfer_id }) }, state.platform === "windows" ? "Explorer で表示" : "Finder で表示"));
   }
   if ((it.status === "active" || it.status === "uploaded")) {
     btns.append(el("button", { class: "small danger", "data-testid": "cancel", onclick: () => cancelTransfer(t.transfer_id) }, "取消"));
@@ -318,11 +363,14 @@ async function openSettings() {
   $("set-version").textContent = state.version;
   $("set-name").value = state.endpoint_name;
   const login = $("set-login");
+  $("set-login-label").textContent = state.platform === "windows" ? "Windows の起動時に開始" : "ログイン時に起動";
+  $("forget").textContent = state.platform === "windows" ? "この PC の登録情報を削除" : "このMacの登録情報を削除";
   login.checked = state.login_item === "enabled";
   login.disabled = state.login_item === "unavailable";
   $("set-login-status").textContent = {
     enabled: "有効", not_registered: "無効", requires_approval: "システム設定で承認が必要です",
     unavailable: ".app として起動した場合のみ設定できます", not_found: "無効",
+    disabled_by_user: "Windows の設定（スタートアップ アプリ）で無効になっています。オンにすると有効に戻します",
   }[state.login_item] ?? state.login_item;
   refreshEndpoints();
   show("settings");
@@ -334,7 +382,10 @@ function route(v) {
   if (!v) return;
   if (v === "send_clipboard") { show("main"); startSendClipboard(); }
   else if (v === "settings") openSettings();
-  else if (v.startsWith("focus:")) { focusId = v.slice(6); show("main"); refreshHistory(); }
+  else if (v.startsWith("focus:")) {
+    // 通知から特定の受信を開いたときは、折りたたんでいても広げて見せる
+    focusId = v.slice(6); show("main"); setHistoryCollapsed(false); refreshHistory();
+  }
 }
 
 // E2E オートメーション用（Rust 側の automation.rs から呼ばれる。--automation 起動時のみ使われる）
@@ -396,7 +447,10 @@ async function init() {
     if (ev.type === "connection") setConn(ev.state);
     else if (ev.type === "progress") updateProgress(ev);
     else if (["transfer_updated", "incoming_ready", "delivered", "transfer_failed"].includes(ev.type)) scheduleHistory();
+    if (ev.type === "incoming_ready" && historyCollapsed) { newWhileCollapsed++; renderHistoryToggle(); }
   });
+  $("history-toggle").onclick = () => setHistoryCollapsed(!historyCollapsed);
+  renderHistoryToggle();
   await listen("endpoints-changed", () => refreshEndpoints());
   await listen("navigate", (e) => route(e.payload));
 

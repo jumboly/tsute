@@ -1,6 +1,6 @@
 # 進捗
 
-最終更新: 2026-09-27
+最終更新: 2026-09-29
 
 ## 現在地
 
@@ -12,7 +12,54 @@ test 環境（AWS 444369845617 / ap-northeast-1）にデプロイ済み。**ク�
 独自ドメイン経由のクラウド E2E 14/14 PASS（2 回連続）。
 Blog リポジトリの GitHub Actions デプロイ（OIDC）が成功し、独自ドメインで Astro 版 Blog を配信中。
 Blog の存在しない URL は Lambda@Edge で 404 ページ（ステータス 404）を返す。API のエラー JSON は不変（確認済み）。
-Phase 2（Windows）はユーザーの指示があるまで着手しない。
+**Phase 2（Windows）着手（2026-09-28, ユーザー指示「着手して CI ビルドまで」）。** ADR-0016、features.json の `phase: "2"`。
+- `tsute-os` の Windows 実装（Clipboard / Toast 通知 / Run キー自動起動 / Explorer 表示）、資格情報マネージャー、
+  %LOCALAPPDATA%、通知領域の常駐、名前付きパイプのオートメーション。
+- CI: `ci.yml` の `windows`（clippy / テスト / 実 Clipboard テスト / 資格情報テスト）、`desktop.yml` の `windows`
+  （当初 NSIS インストーラ → 2026-09-29 ユーザー判断で**フォルダコピー配布**（`tsute.exe` 単体）に変更）。PR #1（ブランチ `phase2-windows`）で実行し **全ジョブ成功（2026-09-29）**:
+  Windows で clippy 警告なし、client-core 結合テスト 10/10（ローカル開発サーバー相手の実転送）、
+  資格情報マネージャー 1/1、実 Clipboard 4/4、DIB 変換 6/6。（この時点の artifact は NSIS, 約 5.3MB）
+- **2026-09-29 Windows 11 実機（社内 PC）で確認**:
+  - 手動（ユーザー操作, ローカル開発サーバー, 2 プロファイル）: Text・画像の送受信、ファイル（PDF / zip 22MB / vhdx 1GB）の
+    送受信。受信ファイルに Mark of the Web（ZoneId=3）が付くこと、part ファイルが残らないことを確認。
+  - E2E（`e2e/run_e2e.py` を Windows 対応。名前付きパイプ + `e2e/winclip.py`）: 1 回目は 12 手順中 8 手順通過
+    （登録・Key 再利用拒否・一覧・Text・大きい Text・画像・動画（CF_HDROP）・複数ファイル）。
+    9 手順目の途中で**社内のウイルス対策ソフトの挙動監視が tsute.exe を「Unauthorized file encryption」として停止**。
+    乱数を詰めた偽の `single.pdf` を `.tsute-part` から改名した時点。以後、E2E の再実行はしていない（ユーザー判断待ち）。
+  - 対策（検出の回避ではなく、普通のアプリと同じ振る舞いにそろえる）: 受信ファイルへの Mark of the Web、
+    Windows では part ファイル名の先頭のドットをやめる（ADR-0016）、E2E の PDF を中身も正しい PDF にする、
+    exe を一時フォルダではなく `%LOCALAPPDATA%\Programs\tsute\` に置く。対策後の手動確認では検出なし。
+  - 未確認: 通知の表示とクリック、自動起動、トレイ操作、Explorer からの D&D、転送途中の再開（kill → 再起動）。
+  - 実機確認で出た UI の指摘を反映（2026-09-29, Windows で確認済み・macOS は未確認）: Windows で「Mac」と出ていた
+    登録名の初期値と登録削除ボタンを OS に合わせる、ウィンドウを 400×580 に縮めて余白を詰める、履歴だけをスクロール、
+    履歴の折りたたみ（折りたたみ中はウィンドウの高さを中身に合わせて固定、新着件数を表示、通知から開くと広げる）、
+    送信確認画面の送信先とボタンを上部に固定（内容が長くても見切れない）。
+
+**Namespace による Endpoint の分離（#15, ADR-0017）実装・test 環境にデプロイ済み（2026-09-29, PR #16）。** Enrollment Key に
+Namespace を紐付け、一覧・転送・一斉通知を同じ Namespace 内に限定（Backend で強制）。既存の Endpoint は `default` とみなし移行不要。
+`scripts/admin.sh <env> issue-key <namespace>`（Namespace 必須）。
+- デプロイ後の確認: `admin.sh test list` で既存 4 Endpoint（Mac ×2, iPhone ×2）が `default`。Namespace なしの
+  issue-key はスクリプト・Lambda の両方で拒否。クラウド Web E2E（`e2e` Namespace に登録）Chromium 13/13、
+  WebKit は 1 回目 `offline_recovery` のみ失敗（#4 と同じ散発）→ 再実行 2 回とも 13/13。終了後に E2E の Endpoint は失効済み。
+- クラウドのデスクトップ E2E（`e2e` Namespace）: 1 回目は Video（file URL）のプレビュー待ちでタイムアウト（#5 の再発）、
+  再実行で 14/14。一覧には E2E の Endpoint だけが表示され、既存の Endpoint は見えない（Namespace の分離をクラウドで確認）。
+- 未確認: 既存の Mac / iPhone の実機での送受信（ユーザー操作）。
+- CI からの Backend デプロイを復旧（#3 クローズ, PR #17）: bootstrap の信頼条件を immutable subject 形式に更新し、
+  GitHub Environment `test` に設定値を登録（`AWS_REGION` のみ Variables、ほかは Secrets。ADR-0010）。
+  Deploy backend 成功（run 36577497594）、ログに独自ドメイン・アカウント ID が出ないことを確認。
+
+**コスト配分タグ（2026-09-30, PR #19）。** 全リソースに `app=tsute` / `env=<env>`（bootstrap は `env=shared`）。test 環境に
+デプロイ済みで、スタック外の証明書・ホストゾーン・SSM も `infra/tag-resources.sh test` で付け直した（21 件を確認）。
+請求コンソールでのコスト配分タグの有効化はユーザー作業（未実施）。
+
+**リリースとコミットの表示（2026-09-30, PR）。** `v*` タグの push で Mac（arm64）/ Windows のアプリを添付したリリースの
+下書きを作る（接続先 URL は埋め込まない）。デスクトップの設定画面・Backend の `/api/health`・Web の設定画面にコミットを表示。
+- 2026-09-30 `v0.1.0` のタグで Release が成功し、下書きを作成（公開はユーザー）。添付: Mac arm64 / Windows x64 の zip と
+  SHA256SUMS（ダウンロードして一致を確認）。どちらのバイナリにもコミット 7e7f17c が入り、独自ドメインは入っていない。
+  Mac は ad-hoc 署名・版 0.1.0。test 環境の `/api/health` は `commit: 7e7f17c`。
+  未確認: リリース版アプリの設定画面での表示（実機）、Web の設定画面での版表示（次の deploy-web 以降）。
+
+GitHub リポジトリ: https://github.com/jumboly/tsute（public, 2026-09-28 作成）と fork の https://github.com/mianst9524/tsute。
 
 **Phase W（Web / PWA）実装済み・iPhone 実機確認済み（2026-09-27）。Android は端末が無く保留。** ユーザー指示で Windows より先に着手。
 ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pwa.md`、機能一覧 features.json の `phase: "W"`。
@@ -37,25 +84,15 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 
 ## 次にやること
 
-0. **実機確認済み（2026-09-27, iPhone のホーム画面 PWA）**: 登録、PWA / iPhone の再起動後も同じ Endpoint、音声入力 → Send → Mac で受信、Mac → PWA の Text 受信、
-   画像の双方向、PWA を完全に閉じた状態での Web Push 通知、機内モード解除後の回収。
-   **保留**: Android（Share Target 等）は端末が無いため保留（ユーザー判断）。Firefox は未確認。
-   気づいた点: (a) PWA の受信カードに気づきにくい (b) Mac の送信先の初期値が一覧の先頭（旧テスト Endpoint）で誤送信しかけた
-   (c) iOS はホーム画面の Web アプリと Safari で保存領域が別で、PWA 側で再登録が必要（仕様。TESTING.md に記載）
-1. **[実装済み・実機確認待ち]** 実機確認で見つかった 2 点を改善（2026-09-27）。ローカル・test 環境の E2E で確認済み。
-   (a) Web: 新着でトースト（「◯◯ から テキストを受信しました」/ 起動時は「未処理の受信が N 件」）、受信欄へスクロール
-   （入力中は動かさない）、未処理カードを「新着」として強調、表題とホーム画面アイコンに未処理件数（Badging API。
-   Push 受信時は件数不明のため印だけ）
-   (b) Mac: 最後に送信した相手を profile.json（last_receiver）に保存し、起動直後の送信先の初期値にする
-2. Phase 2（Windows）はユーザーの指示があるまで着手しない。
-   GitHub リポジトリの作成（CI/CD の実行。`web-e2e` ジョブと `deploy-web.yml` を追加済み・未実行）
-3. chunk size / 並列数の実回線ベンチ
-4. 手動確認: OS 通知の許可と表示（ad-hoc 署名の .app では自動許可されず granted=false だった）、
-   メニューバーのクリック操作、Finder からの実ドラッグ&ドロップ
-5. GitHub リポジトリ作成（ユーザー確認が必要）→ CI 実行。作成したら
-   `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` を確認し、immutable subject が有効なら
-   bootstrap の `GitHubAppRepo` を `owner@ownerId/repo@repoId` 形式で更新する（ADR-0010。Blog ロールで実際に踏んだ）
-6. Phase 1 完了報告
+課題は GitHub issue で管理する（2026-09-29 に移行。`gh issue list`）。ここには現在地の要約だけを書く。
+
+- 実機確認済み（2026-09-27, iPhone のホーム画面 PWA）: 登録、PWA / iPhone の再起動後も同じ Endpoint、音声入力 → Send → Mac で受信、
+  Mac → PWA の Text 受信、画像の双方向、PWA を完全に閉じた状態での Web Push 通知、機内モード解除後の回収。
+  iOS はホーム画面の Web アプリと Safari で保存領域が別で、PWA 側で再登録が必要（仕様。TESTING.md に記載）。
+- 確認待ち: #11 新着表示と送信先の初期値、#10 Windows 版、#12 Mac の手動確認、#14 Android / Firefox（保留）
+- 不具合: #4 WebKit の web-e2e が不安定、#5 クラウド E2E の動画プレビュー待ちタイムアウト、#6 受信の received が中断される
+- 機能・作業: #9 Windows 版の未実装項目、#8 配布用の署名、#7 フォルダの Drop、#13 chunk size / 並列数のベンチ
+- Phase 1 完了報告
 
 ## .app 統合チェック結果（2026-09-27, e2e/out/app-checks.json）
 
@@ -66,30 +103,35 @@ ADR-0015 を調査結果で更新し Accepted。原文 `docs/requirements/web-pw
 
 ## 既知の問題 / 注意
 
+- CI の `web-e2e` が WebKit だけ不安定。失敗したジョブを再実行して成功を確認してからマージする → #4
+- CI の Rust は stable 追従（2026-09-29 時点 1.98.1）。手元が古いと新しい clippy lint を見逃すので `rustup update stable` しておく。
+
 - Web: Playwright の WebKit ビルドでは `pushManager.getSubscription()` がページごと固まる。通知許可が無いときは
   pushManager に触れない実装にして回避（許可が無ければ有効な購読は存在しないため、実 Safari でも妥当）。
-- Web: 受信は Copy / 保存 / 共有 / 閉じる で received になる。操作直後にページを閉じると POST が中断され、
-  次回また表示されることがある（安全側）。
+- Web: 受信操作の直後にページを閉じると received の POST が中断され、次回また表示されることがある（安全側）→ #6
 - Web: 画像の Clipboard 書き込みに対応しない Browser では「保存」「共有…」を使う。
 - 既存の Mac の .app（旧ビルド）は accepts を知らないため、Web 宛に動画・ファイルを選ぶと送信時にサーバーが
   422 で拒否する（確認画面での理由表示は再ビルド後）。
 
-- 独自ドメイン設定直後のクラウド E2E で「Video（file URL）のプレビュー待ちタイムアウト」が 2 回続いた。
-  サーバー通信を伴わない手順で、E2E 修正後の 2 回は再現しなかった。原因は未特定（実行中の Clipboard 操作との
-  干渉を疑う）。再発したら `--keep` でログを残して調べる。
+- クラウド E2E で動画のプレビュー待ちがタイムアウトすることがある → #5
 - 登録済みの Mac の Endpoint は旧 `*.cloudfront.net` の URL のままでも動く。独自ドメインへの切り替えは任意。
 
 - AWS CLI のセッション期限切れ（`aws login` が必要）。
 - Accessibility 権限がないため System Events による UI 自動操作は不可 → アプリ内オートメーション（ADR-0013）。
-  OS からの実ドラッグ、メニューバークリック、通知クリック、実ログインは手動確認項目。
-- Xcode 本体は未インストール（CLT のみ）。.app は ad-hoc 署名。配布には Developer ID 署名と公証が必要。
+  OS からの実ドラッグ、メニューバークリック、通知クリック、実ログインは手動確認項目 → #12
+- Xcode 本体は未インストール（CLT のみ）。.app は ad-hoc 署名（配布用の署名 → #8）。
 - ad-hoc 署名のため、再ビルド後は既存 Keychain 項目へのアクセス時に許可ダイアログが出る（ADR-0011）。
 - テスト実行時の `sandbox_extension_consume failed` ログは file URL を扱う際の OS のメッセージで、動作には影響しない。
-- フォルダの Drop は未対応（確認画面で除外理由を表示）。
+- フォルダの Drop は未対応（確認画面で除外理由を表示）→ #7
 - macOS 27 では strip 済み proc-macro dylib を dyld が拒否するため `[profile.release.build-override] strip = false`。
 - Lambda のクロスビルドは `CARGO_TARGET_DIR=target/lambda-build`（ホストの release 成果物との衝突回避）。
 
 ## 判断ログ（ADR 化しない小さなもの）
+
+- CI の tauri-cli はソース（crates.io, `--locked`）からビルドし、版（`desktop.yml` の `TAURI_CLI_VERSION`）ごとにバイナリを
+  `actions/cache` で保存する。taiki-e/install-action は tauri-cli を公式サポートしておらず cargo-binstall 経由になり、
+  チェックサム検証の対象外・macOS では第三者ビルドが入り得るため使わない（2026-09-29 ユーザー判断）。
+  Windows ジョブは約 20 分 → 約 9 分（キャッシュヒット時）。
 
 - Web Client はビルドなし ES Modules（npm 依存ゼロ）。proto との整合は実サーバー相手の Playwright E2E で担保（ADR-0015 §1）。
 - Web Push は空 Payload（暗号化不要・内容が push service に渡らない）。`/api/push/config` は無効時も 200 + null。

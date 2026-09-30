@@ -11,4 +11,4 @@
   許可ダイアログが出て無人テストが止まるため。UI に「INSECURE」と表示する。
 - Data Protection Keychain（iOS 型）は entitlement と provisioning profile が必要で、Developer ID 署名がない現状では使えない。
   配布用に Developer ID 署名する段階で再検討する。
-- Windows（Phase 2）: Credential Manager（DPAPI）を予定。
+- Windows: 資格情報マネージャー（DPAPI, `CRED_PERSIST_LOCAL_MACHINE`）。詳細は ADR-0016。

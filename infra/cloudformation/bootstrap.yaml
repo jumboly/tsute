@@ -103,7 +103,9 @@ Resources:
               - Effect: Allow
                 Action: [cloudformation:CreateChangeSet, cloudformation:ExecuteChangeSet, cloudformation:DescribeChangeSet,
                          cloudformation:DeleteChangeSet, cloudformation:DescribeStacks, cloudformation:DescribeStackEvents,
-                         cloudformation:GetTemplateSummary, cloudformation:CreateStack, cloudformation:UpdateStack]
+                         cloudformation:GetTemplateSummary, cloudformation:CreateStack, cloudformation:UpdateStack,
+                         # deploy.sh がスタックにコスト配分タグを付けるため（ADR-0009）
+                         cloudformation:TagResource, cloudformation:UntagResource]
                 Resource: !Sub arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/tsute-*/*
               - Effect: Allow
                 Action: cloudformation:ValidateTemplate

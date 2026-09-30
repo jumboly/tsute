@@ -28,6 +28,21 @@ jobs:
       # 実 Clipboard を上書きするテストは #[ignore]（CI ランナーでは GUI セッションが保証されないため）
       - run: cargo test --workspace
 
+  windows:
+    # Windows 版デスクトップ（Phase 2）とクライアントコアを Windows 上でビルド・テストする。
+    # Lambda は Linux（arm64）専用なので除く
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --exclude tsute-server-lambda --all-targets -- -D warnings
+      - run: cargo test --workspace --exclude tsute-server-lambda
+      # ランナーは使い捨てで Clipboard を上書きしても困る人がいないため、手元では #[ignore] の実 Clipboard テストもここで回す
+      - run: cargo test -p tsute-os --test clipboard_windows -- --ignored --test-threads=1
+
   infra-lint:
     runs-on: ubuntu-latest
     steps:

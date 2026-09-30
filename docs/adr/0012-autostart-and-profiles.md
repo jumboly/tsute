@@ -19,3 +19,4 @@
 - **識別**: default 以外はメニューバーアイコン横にプロファイル名、ウィンドウタイトルと UI にバッジを表示。
 - **二重起動防止**: プロファイルごとの `instance.lock` をファイルロック（`File::try_lock`）。
   同一プロファイルが 2 プロセスで動くと WebSocket・ダウンロードが競合するため。
+- Windows では Run キー（HKCU）で自動起動し、データは `%LOCALAPPDATA%\dev.tsute.desktop\profiles\<name>\`（ADR-0016）。

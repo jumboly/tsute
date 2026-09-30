@@ -3,7 +3,7 @@
     "todo": "未着手",
     "in_progress": "実装中/一部検証",
     "done": "実装・テスト・実フロー確認・文書化済み",
-    "phase": "省略時は Phase 1。\"W\" は Web / PWA Phase（着手はユーザー判断）"
+    "phase": "省略時は Phase 1。\"W\" は Web / PWA Phase、\"2\" は Windows（Phase 2）"
   },
   "features": [
     {
@@ -379,6 +379,91 @@
       "phase": "W",
       "status": "in_progress",
       "notes": "2026-09-27 ユーザーが iPhone 実機（ホーム画面 PWA）で確認済み: 登録・同一 Endpoint の維持・音声入力 → Mac・Mac → PWA・画像の双方向・閉じた状態の Push・Offline 後の回収。Android（Share Target）は端末が無く保留、Firefox は未確認"
+    },
+    {
+      "id": "win-clipboard",
+      "area": "os",
+      "title": "Windows Clipboard の読み取り/正規化/書き込み（CF_UNICODETEXT / PNG / CF_DIB / CF_HDROP）— ADR-0016",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み。CI の実 Clipboard テスト 4/4 に加え、2026-09-29 Windows 11 実機で Text・画像の送受信と他アプリへの貼り付け、E2E で PNG / CF_HDROP を確認。動画の解像度・長さ・サムネイルは未取得"
+    },
+    {
+      "id": "win-credential",
+      "area": "auth",
+      "title": "Windows 資格情報マネージャーに Endpoint 鍵を保存（LOCAL_MACHINE persist）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み。CI で読み書き・削除のテスト。2026-09-29 実機で登録 → 再起動後の認証を確認（手動確認のプロファイル）"
+    },
+    {
+      "id": "win-notify",
+      "area": "os",
+      "title": "Windows Toast 通知（AUMID を HKCU に登録、クリックで該当の受信へ）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み・ビルドのみ確認。表示とクリックは実機で要確認"
+    },
+    {
+      "id": "win-autostart",
+      "area": "desktop",
+      "title": "Windows の自動起動（HKCU Run キー、OS 側で無効化された状態の表示）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み・ビルドのみ確認。実機で再起動後の起動（ウィンドウなし）を要確認"
+    },
+    {
+      "id": "win-tray",
+      "area": "desktop",
+      "title": "通知領域の常駐（左クリックでウィンドウ・右クリックでメニュー、タスクバーの明暗でアイコン切替）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み・ビルドのみ確認。同じプロファイルの再起動で既存ウィンドウを開く経路は未実装"
+    },
+    {
+      "id": "win-automation",
+      "area": "infra-dev",
+      "title": "オートメーション経路の名前付きパイプ化（E2E 用）",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み。2026-09-29 e2e/run_e2e.py を Windows 対応（名前付きパイプ + e2e/winclip.py）。実機で 12 手順中 8 手順通過。9 手順目でウイルス対策ソフトの挙動監視に停止され、全手順は未通過"
+    },
+    {
+      "id": "win-ci-build",
+      "area": "infra-dev",
+      "title": "CI で Windows のビルド・テスト・配布用フォルダ（tsute.exe 単体, インストーラーなし）作成",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "ci.yml windows / desktop.yml windows。PR #1 で全ジョブ成功（2026-09-29, NSIS 版）。フォルダコピー配布に変更し、dumpbin で追加 DLL 不要を CI で確認。コード署名なし"
+    },
+    {
+      "id": "win-receive-motw",
+      "area": "os",
+      "title": "Windows の受信ファイルに Mark of the Web（ZoneId=3）、part ファイル名をブラウザ風に — ADR-0016",
+      "phase": "2",
+      "status": "in_progress",
+      "notes": "実装済み。client-core 結合テストで Zone.Identifier を確認、2026-09-29 実機で PDF / zip / 1GB を受信して確認。挙動監視に対する効果は手動確認 1 回のみ"
+    },
+    {
+      "id": "desktop-compact-ui",
+      "area": "desktop",
+      "title": "コンパクトなウィンドウ: 履歴のスクロール・折りたたみ（折りたたみ中は高さを固定）、送信確認の操作を上部に固定",
+      "status": "in_progress",
+      "notes": "2026-09-29 実装。Windows 実機でユーザー確認済み。使い捨てプロファイルで高さ（580 → 350 → 580）とスクロール後も送信ボタンが見えることを自動確認。E2E に「確認画面だけが見えている」検査を追加。macOS は未確認"
+    },
+    {
+      "id": "namespace",
+      "area": "backend",
+      "title": "Namespace による Endpoint の分離（認可境界）— issue #15, ADR-0017",
+      "status": "in_progress",
+      "notes": "2026-09-29 実装・test 環境にデプロイ。server-core の namespace_rules 6 件（境界を外すと失敗することも確認）、旧 DynamoDB 項目の読み込み 2 件、既存テスト・ローカル Web E2E 26/26。デプロイ後: 既存 Endpoint が default、Namespace なしの issue-key を拒否、クラウド Web E2E（e2e Namespace）通過（WebKit は #4 の散発 1 回後に再実行で通過）。クラウドのデスクトップ E2E 14/14（1 回目は #5 の動画プレビュー待ちで失敗、再実行で通過。一覧に既存 Endpoint が出ないことも確認）。未確認: 既存の実機での送受信"
+    },
+    {
+      "id": "release",
+      "area": "ci",
+      "title": "リリース（v* タグで Mac / Windows のアプリを添付した下書きを作る）とビルドしたコミットの表示 — ADR-0010",
+      "status": "in_progress",
+      "notes": "2026-09-30 実装。v0.1.0 で Release が成功し下書きを作成（添付 3 件、SHA256 一致、バイナリにコミット 7e7f17c、ドメインなし、Mac は ad-hoc）。/api/health の commit をデプロイ後に確認。ローカル Web E2E 26/26（版表示の検査を追加）。未確認: リリース版アプリの設定画面の表示（実機）、公開後のダウンロードからの起動"
     }
   ]
 }
